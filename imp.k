@@ -21,7 +21,7 @@ module IMP
   syntax BExp ::= Bool
                 | "(" BExp ")"    [bracket]
                 | AExp "<=" AExp  [seqstrict]
-                > BExp "and" BExp [strict(2)]
+                > BExp "and" BExp [strict(1)]
                 | "not" BExp      [strict]
   syntax Stmt ::= StmtVal
                 | Id ":=" AExp    [strict(2)]
@@ -63,5 +63,8 @@ module IMP
   rule not true => false
 
   rule true and B:BExp => B
+
+  rule while B:BExp do S:Stmt =>
+       if B then (S ; while B do S) else skip
 
 endmodule
