@@ -1,2 +1,1 @@
-var x , x ; x := 1 ; x := 2
-
+false and (1/0 <= 3)
