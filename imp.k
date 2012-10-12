@@ -13,48 +13,62 @@ separated by ~>
 */
 
 module IMP
-  syntax AExp ::= Int 
+  syntax AExp ::= Int | Id | String
                 | "(" AExp ")"    [bracket]
                 > AExp "*" AExp   [seqstrict, left]
                 | AExp "/" AExp   [seqstrict, left]
                 > AExp "+" AExp   [seqstrict, left]
+                | AExp "-" AExp   [seqstrict, left]
+                | "read" "()"
   syntax BExp ::= Bool
                 | "(" BExp ")"    [bracket]
                 | AExp "<=" AExp  [seqstrict]
+                | AExp ">=" AExp 
                 > BExp "and" BExp [strict(1)]
                 | "not" BExp      [strict]
   syntax Stmt ::= StmtVal
-                | Id ":=" AExp    [strict(2)]
+                | "print" "(" AExps ")"   [strict]
+                | Id ":=" AExp            [strict(2)]
                 | "if" BExp "then" Stmt "else" Stmt  [strict(1)]
                 | "while" BExp "do" Stmt
-                > Stmt ";" Stmt   [seqstrict, left]
-                | "(" Stmt ")"    [bracket]
+                > "var" Ids
+                > Stmt ";" Stmt           [strict(1), left]
+                | "(" Stmt ")"            [bracket]
+                | "{" Stmt "}"
   syntax StmtVal ::= "skip"
 
-  syntax Pgm ::= "var" Ids ";" Stmt
-  syntax Ids ::= List{Id,","} 
+  syntax Ids ::= List{Id,","}          [strict]
+  syntax AExps ::= List{AExp,","}      [strict]
 
-  syntax KResult ::= Bool | Int | StmtVal
+  syntax KResult ::= Bool | Int | String | StmtVal
          	 
-  configuration <T color="yellow">
+  configuration <C color="yellow">
                   <k color="green"> $PGM:K </k>
-                  <state color="red"> .Map </state>
-                </T>
+                  <env color="red"> .Map </env>
+                  <store color="red"> .Map </store>
+                  <in color="magenta" stream="stdin">  .List </in>
+                  <out color="Orchid" stream="stdout"> .List </out>
+                </C>
 
-  rule <k> var (X:Id, Xs:Ids => Xs) ; _ </k>
-       <state> Rho:Map (. => X |-> 0) </state>
+  rule <k> var (X:Id, Xs:Ids => Xs) ... </k>
+       <env> Env (. => X |-> N) </env>
+       <store> Store:Map (. => N |-> 0) </store>
 
-  rule <k> var .Ids ; S:Stmt => S </k>
+  rule var .Ids => skip     [structural]
 
   rule <k> (X:Id := I1:Int => skip) ... </k>
-       <state> Rho:Map (X |-> I2 => X |-> I1) </state>
+       <env> Env:Map (X |-> N:Int) </env>
+       <store> Store:Map (N |-> I2 => N |-> I1) </store>
 
   rule I1:Int + I2:Int => I1 +Int I2 
+  rule I1:String + I2:String => I1 +String I2 
+  rule I1:Int - I2:Int => I1 -Int I2 
   rule I1:Int * I2:Int => I1 *Int I2 
   rule I1:Int / I2:Int => I1 /Int I2 when I2 =/=Int 0
   rule <k> I1:Int / 0 ...</k> => <k> "div0" </k>
 
   rule I1:Int <= I2:Int => I1 <=Int I2        
+  rule A:AExp >= B:AExp => B <= A         [structural]
 
   rule if true then S:Stmt else _ => S
   rule if false then _ else S:Stmt => S
@@ -63,8 +77,31 @@ module IMP
   rule not true => false
 
   rule true and B:BExp => B
+  rule false and B:BExp => false
+
+  rule skip ; S:Stmt => S    [structural]
 
   rule while B:BExp do S:Stmt =>
        if B then (S ; while B do S) else skip
 
+  rule <k> (X:Id=>I) ...</k>
+       <env> Env(X |-> N) </env>
+       <store> Store(N |-> I) </env>
+
+  syntax Printable ::= Int | String
+  rule <k> print(P:Printable,AEs:AExps => AEs) ...</k>
+       <out>... (. => ListItem(P)) </out>
+  rule print(.AExps) => skip
+
+  rule <k> (read() => I:Int) ...</k>       
+       <in> (ListItem(I) => .) ... </in>
+
+  syntax K ::= "env" "(" Map ")"
+  rule <k> {S:Stmt} => S ~> env(Rho) ...</k>
+       <env> Rho:Map </env>
+
+  rule <k> (skip ~> env(Rho:Map) => skip) ...</k>
+       <env> Rho2:Map => Rho </env>
+
 endmodule
+

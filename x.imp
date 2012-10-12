@@ -1,1 +1,11 @@
-var 
+var prev,cur,which;
+which := read();
+prev  := 1;
+cur   := 1;
+print(1,"\n");
+while (which >= 3) do
+  (which := which - 1;
+   print(cur,"\n");
+   cur   := prev + cur;
+   prev  := cur - prev);
+which :=  cur / prev
