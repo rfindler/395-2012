@@ -1,0 +1,8 @@
+var x;
+x:=0;
+print(x);
+{ var x;
+  x:=1;
+  print(x)
+};
+print(x)

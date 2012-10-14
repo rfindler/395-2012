@@ -51,8 +51,8 @@ module IMP
                 </C>
 
   rule <k> var (X:Id, Xs:Ids => Xs) ... </k>
-       <env> Env (. => X |-> N) </env>
-       <store> Store:Map (. => N |-> 0) </store>
+       <env> Env (. => X |-> 0) </env>
+       <store> Store:Map (. => 0 |-> 0) </store>
 
   rule var .Ids => skip     [structural]
 
