@@ -32,7 +32,7 @@ module IMP
   configuration <C color="yellow">
                   <threads>
                     <thread multiplicity="*">
-                      <k color="green"> $PGM:K </k>
+                      <k color="green"> $PGM:Stmt </k>
                     </thread>
                   </threads>
                   <env color="red"> .Map </env>
