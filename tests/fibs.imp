@@ -3,7 +3,7 @@ which := 8;
 prev  := 1;
 cur   := 1;
 print(1);
-while (which >= 3) do
+while (which >= 2) do
   (which := which - 1;
    print(" ",cur);
    cur   := prev + cur;

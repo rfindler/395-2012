@@ -1,17 +1,3 @@
-/*
-
-The K cell contains a sequence of:
-
-   Pgm
-   Stmt
-   AExp
-   BExp
-   KResult
-
-separated by ~>
-
-*/
-
 module IMP
   syntax AExp ::= Int | Id | String
                 | "(" AExp ")"    [bracket]
@@ -32,6 +18,7 @@ module IMP
                 | "if" BExp "then" Stmt "else" Stmt  [strict(1)]
                 | "while" BExp "do" Stmt
                 > "var" Ids
+                > "spawn" Stmt
                 > Stmt ";" Stmt           [strict(1), left]
                 | "(" Stmt ")"            [bracket]
                 | "{" Stmt "}"
@@ -43,16 +30,28 @@ module IMP
   syntax KResult ::= Bool | Int | String | StmtVal
          	 
   configuration <C color="yellow">
-                  <k color="green"> $PGM:K </k>
+                  <threads>
+                    <thread multiplicity="*">
+                      <k color="green"> $PGM:K </k>
+                    </thread>
+                  </threads>
                   <env color="red"> .Map </env>
                   <store color="red"> .Map </store>
+                  <allocptr color="cyan"> 0 </allocptr>
                   <in color="magenta" stream="stdin">  .List </in>
                   <out color="Orchid" stream="stdout"> .List </out>
                 </C>
 
   rule <k> var (X:Id, Xs:Ids => Xs) ... </k>
-       <env> Env (. => X |-> 0) </env>
-       <store> Store:Map (. => 0 |-> 0) </store>
+       <env> Env (. => X |-> N) </env>
+       <store> Store:Map (. => N |-> 0) </store>
+       <allocptr> (N => N +Int 1) </allocptr>
+       when notBool(X in keys(Env))
+
+  rule <k> var (X:Id, Xs:Ids => Xs) ... </k>
+       <env> Env (X |-> N2 => X |-> N) </env>
+       <store> Store:Map (. => N |-> 0) </store>
+       <allocptr> (N => N +Int 1) </allocptr>
 
   rule var .Ids => skip     [structural]
 
@@ -97,11 +96,15 @@ module IMP
        <in> (ListItem(I) => .) ... </in>
 
   syntax K ::= "env" "(" Map ")"
+
   rule <k> {S:Stmt} => S ~> env(Rho) ...</k>
        <env> Rho:Map </env>
 
   rule <k> (skip ~> env(Rho:Map) => skip) ...</k>
        <env> Rho2:Map => Rho </env>
+
+  rule <k> (spawn S => skip)  ...</k>
+       . => <thread>... <k> S </k> ...</thread>
 
 endmodule
 
