@@ -104,7 +104,7 @@ module IMP
        <env> Rho2:Map => Rho </env>
 
   rule <k> (spawn S => skip)  ...</k>
-       . => <thread>... <k> S </k> ...</thread>
+       (. => <thread>... <k> S </k> ...</thread>)
 
 endmodule
 
