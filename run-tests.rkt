@@ -23,13 +23,27 @@
      thread?
      (for/list ([file (in-directory tests)])
        (when (regexp-match #rx"[.]imp$" (path->string file))
-         (define out-file (regexp-replace #rx"imp$" (path->string file) "out"))
+         (define out-files (find-out-files file))
          (cond
-           [(file-exists? out-file)
-            (run-a-test file out-file)]
+           [(null? out-files)
+            (eprintf "expected to find at least one out file for ~a\n" file)]
            [else
-            (eprintf "expected to find ~a\n" out-file)])))))
+            (run-a-test file out-files)])))))
   (catch-results/io test-threads))
+
+(define (find-out-files in-file)
+  (define-values (base name dir) (split-path in-file))
+  ;; out files must not have a ~ in the suffix part of the name
+  (define prefix-reg
+    (regexp (string-append 
+             "^" 
+             (regexp-quote (regexp-replace #rx"imp$" (path->string name) "out"))
+             "[^~]*$")))
+  (filter
+   values
+   (for/list ([file (in-list (directory-list base))])
+     (and (regexp-match? prefix-reg (path->string file))
+          (build-path base file)))))
 
 (define job-chan (make-channel))
 (define results-chan (make-channel))
@@ -82,30 +96,33 @@
                (handle-evt thd (λ (_) (loop (remq thd thds)))))
              thds))])))
     
-(define (run-a-test in-file out-file)
+(define (run-a-test in-file out-files)
   (thread
    (λ ()
      (define resp-chan (make-channel))
-     (channel-put job-chan (list in-file out-file resp-chan))
+     (channel-put job-chan (list in-file out-files resp-chan))
      (define actual-answer (channel-get resp-chan))
-     (channel-put results-chan (list* in-file out-file actual-answer)))))
+     (channel-put results-chan (list* in-file out-files actual-answer)))))
 
 (define num-tests 0)
 
 (define (show-results lst)
   (set! num-tests (+ num-tests 1))
-  (define-values (in-file out-file timedout? stdout stderr) (apply values lst))
+  (define-values (in-file out-files timedout? stdout stderr) (apply values lst))
   (cond
     [timedout?
      (printf "~a timed out\n" in-file)]
     [(not (equal? "" stderr))
      (printf "~a has stderr output:\n----------\n~a\n----------\n" in-file stderr)]
     [else
-     (define sp (open-output-string))
-     (call-with-input-file out-file (λ (port) (copy-port port sp)))
-     (define expected-answer (get-output-string sp))
-     (unless (equal? expected-answer stdout)
-       (printf "~a failed\n  expected ~s\n       got ~s\n" 
-               in-file expected-answer stdout))]))
+     (define result-candidates 
+       (for/list ([out-file (in-list out-files)])
+         (define sp (open-output-string))
+         (call-with-input-file out-file (λ (port) (copy-port port sp)))
+         (get-output-string sp)))
+     (unless (ormap (λ (x) (equal? x stdout)) result-candidates)
+       (printf "~a failed\n       got ~s\n" in-file stdout)
+       (for ([result (in-list result-candidates)])
+         (printf "  expected ~s\n" result)))]))
   
 (main)
