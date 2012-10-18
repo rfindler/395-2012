@@ -1,0 +1,3 @@
+var x;
+(spawn print(x));
+x:=1

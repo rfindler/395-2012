@@ -17,12 +17,14 @@ module IMP
                 | Id ":=" AExp            [strict(2)]
                 | "if" BExp "then" Stmt "else" Stmt  [strict(1)]
                 | "while" BExp "do" Stmt
-                > "var" Ids
                 > "spawn" Stmt
                 > Stmt ";" Stmt           [strict(1), left]
                 | "(" Stmt ")"            [bracket]
-                | "{" Stmt "}"
+                | "{" Block "}"
   syntax StmtVal ::= "skip"
+
+  syntax Block ::= "var" Ids ";" Block
+                 | Stmt
 
   syntax Ids ::= List{Id,","}          [strict]
   syntax AExps ::= List{AExp,","}      [strict]
@@ -32,32 +34,32 @@ module IMP
   configuration <C color="yellow">
                   <threads>
                     <thread multiplicity="*">
-                      <k color="green"> $PGM:Stmt </k>
+                      <k color="green"> $PGM:Block </k>
+                      <env color="red"> .Map </env>
                     </thread>
                   </threads>
-                  <env color="red"> .Map </env>
                   <store color="red"> .Map </store>
                   <allocptr color="cyan"> 0 </allocptr>
                   <in color="magenta" stream="stdin">  .List </in>
                   <out color="Orchid" stream="stdout"> .List </out>
                 </C>
 
-  rule <k> var (X:Id, Xs:Ids => Xs) ... </k>
+  rule <k> var (X:Id, Xs:Ids => Xs) ; _ ... </k>
        <env> Env (. => X |-> N) </env>
        <store> Store:Map (. => N |-> 0) </store>
        <allocptr> (N => N +Int 1) </allocptr>
        when notBool(X in keys(Env))
 
-  rule <k> var (X:Id, Xs:Ids => Xs) ... </k>
+  rule <k> var (X:Id, Xs:Ids => Xs) ; _ ... </k>
        <env> Env (X |-> N2 => X |-> N) </env>
        <store> Store:Map (. => N |-> 0) </store>
        <allocptr> (N => N +Int 1) </allocptr>
 
-  rule var .Ids => skip     [structural]
+  rule var .Ids ; B => B     [structural]
 
   rule <k> (X:Id := I1:Int => skip) ... </k>
        <env> Env:Map (X |-> N:Int) </env>
-       <store> Store:Map (N |-> I2 => N |-> I1) </store>
+       <store> Store:Map (N |-> I2 => N |-> I1) </store>   [transition]
 
   rule I1:Int + I2:Int => I1 +Int I2 
   rule I1:String + I2:String => I1 +String I2 
@@ -85,11 +87,11 @@ module IMP
 
   rule <k> (X:Id=>I) ...</k>
        <env> Env(X |-> N) </env>
-       <store> Store(N |-> I) </env>
+       <store> Store(N |-> I) </env>                        [transition]
 
   syntax Printable ::= Int | String
   rule <k> print(P:Printable,AEs:AExps => AEs) ...</k>
-       <out>... (. => ListItem(P)) </out>
+       <out>... (. => ListItem(P)) </out>                   [transition]
   rule print(.AExps) => skip
 
   rule <k> (read() => I:Int) ...</k>       
@@ -97,14 +99,16 @@ module IMP
 
   syntax K ::= "env" "(" Map ")"
 
-  rule <k> {S:Stmt} => S ~> env(Rho) ...</k>
+  rule <k> {B:Block} => B ~> env(Rho) ...</k>
        <env> Rho:Map </env>
 
   rule <k> (skip ~> env(Rho:Map) => skip) ...</k>
        <env> Rho2:Map => Rho </env>
 
   rule <k> (spawn S => skip)  ...</k>
-       (. => <thread>... <k> S </k> ...</thread>)
+       <env> E </env>
+       (. => <thread> <k> S </k> <env> E </env> </thread>)
+
+  rule (<thread> ... <k> skip </k> ... </thread> => .)  
 
 endmodule
-
