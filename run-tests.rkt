@@ -64,7 +64,7 @@
               (define errp (open-output-string))
               (channel-put print-chan (format "running ~a ...\n" in-file))
               (define lst (process*/ports outp (open-input-string "") errp 
-                                          krun "--no-config" (format "~a" in-file)))
+                                          krun "--no-deleteTempDir" "--no-config" (format "~a" in-file)))
               (define proc (list-ref lst 4))
               (define done-chan (make-channel))
               (thread (λ () (proc 'wait) (channel-put done-chan #t)))
