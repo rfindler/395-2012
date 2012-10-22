@@ -3,8 +3,11 @@
 (define-runtime-path tests "tests")
 
 (define num-workers (processor-count))
+(define do-search? #t)
+
 (command-line
  #:once-each
+ [("-n" "--no-search") "do not enumerate all possibilities" (set! do-search? #f)]
  [("-j") num "number of parallel workers" 
          (begin
            (unless (string->number num)
@@ -64,7 +67,9 @@
               (define errp (open-output-string))
               (channel-put print-chan (format "running ~a ...\n" in-file))
               (define lst (process*/ports outp (open-input-string "") errp 
-                                          krun "--no-deleteTempDir" "--no-config" (format "~a" in-file)))
+                                          krun "--no-deleteTempDir" 
+                                          (if do-search? "--search" "--no-config")
+                                          (format "~a" in-file)))
               (define proc (list-ref lst 4))
               (define done-chan (make-channel))
               (thread (λ () (proc 'wait) (channel-put done-chan #t)))
@@ -72,12 +77,70 @@
               (unless didnt-timeout (proc 'kill) (proc 'wait))
               (channel-put resp-chan
                            (list (not didnt-timeout)
-                                 (get-output-string outp)
+                                 (if do-search?
+                                     (parse-io (get-output-string outp))
+                                     (get-output-string outp))
                                  (get-output-string errp)))
               (loop)]))
           (handle-evt die-chan void)))))
     die-chan))
              
+(define (parse-io str)
+  (define sp (open-input-string str))
+  (let loop ()
+    (define next (regexp-match #rx"\nSolution [0-9]+, state [0-9]+:\n" sp))
+    (cond
+      [(not next) '()]
+      [else
+       (define m (regexp-match #rx"<out>\n *#buffer[(] *\"" sp))
+       (define output (parse-to-close-quote sp))
+       (cons output (loop))])))
+
+(define (parse-to-close-quote sp)
+  (apply
+   string
+   (let loop ([escaping? #f])
+     (define c (read-char sp))
+     (cond
+       [(eof-object? c) (error 'parse-io "found eof in the middle of the buffer")]
+       [else
+        (define the-char
+          (if escaping?
+              (case c
+                [(#\") #\"]
+                [(#\\) #\\]
+                [(#\n) #\newline]
+                [else (error 'parse-io "unknown escape char: ~s" c)])
+              (case c
+                [(#\\) 'escape]
+                [(#\") #f]
+                [else c])))
+        (cond
+          [(eq? the-char 'escape)
+           (loop #t)]
+          [(not the-char)
+           '()]
+          [else
+           (cons the-char (loop #f))])]))))
+
+
+
+(module+ test
+  (require rackunit)
+  (check-equal? (parse-to-close-quote (open-input-string "1 1 2 3 5 8 13 21\\n\""))
+                "1 1 2 3 5 8 13 21\n")
+  (check-equal?
+   (parse-io
+    (string-append
+     "Search results:\n\nSolution 1, state 90:\n"
+     "<C> \n  <allocptr>\n   3 \n  </allocptr> \n"
+     "  <in>\n   #buffer( \"null\\n\" )\n  </in> \n"
+     "  <out>\n   #buffer( \"1 1 2 3 5 8 13 21\\n\" )\n"
+     "  </out> \n  <threads>\n   .\n  </threads> \n"
+     "  <store>   \n    0 |-> 21\n    1 |-> 34\n    2 |-> 1\n  </store> \n"
+     "</C>\n"))
+   '("1 1 2 3 5 8 13 21\n")))
+
 (define (catch-results/io thds)
   (let loop ([thds thds])
     (cond
@@ -120,9 +183,25 @@
          (define sp (open-output-string))
          (call-with-input-file out-file (λ (port) (copy-port port sp)))
          (get-output-string sp)))
-     (unless (ormap (λ (x) (equal? x stdout)) result-candidates)
-       (printf "~a failed\n       got ~s\n" in-file stdout)
-       (for ([result (in-list result-candidates)])
-         (printf "  expected ~s\n" result)))]))
+     (cond
+       [do-search? 
+        (define failed? #f)
+        (define (show-failed)
+          (unless failed?
+            (set! failed? #t)
+            (printf "~a failed\n" in-file)))
+        (for ([got (in-list stdout)])
+          (unless (member got result-candidates)
+            (show-failed)
+            (printf "       got ~s, but didn't expect it\n" got)))
+        (for ([expected (in-list result-candidates)])
+          (unless (member expected stdout)
+            (show-failed)
+            (printf "  expected ~s, but didn't get it\n" expected)))]
+       [else
+        (unless (ormap (λ (x) (equal? x stdout)) result-candidates)
+          (printf "~a failed\n       got ~s\n" in-file stdout)
+          (for ([result (in-list result-candidates)])
+            (printf "  expected ~s\n" result)))])]))
   
 (main)
