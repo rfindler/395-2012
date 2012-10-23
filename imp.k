@@ -1,6 +1,7 @@
 module IMP
   syntax AExp ::= Int | Id | String
-                | "(" AExp ")"    [bracket]
+  	      	| Id "(" AExp ")" [strict(2)]
+                > "(" AExp ")"    [bracket]
                 > AExp "*" AExp   [seqstrict, left]
                 | AExp "/" AExp   [seqstrict, left]
                 > AExp "+" AExp   [seqstrict, left]
@@ -17,6 +18,7 @@ module IMP
                 | Id ":=" AExp            [strict(2)]
                 | "if" BExp "then" Stmt "else" Stmt  [strict(1)]
                 | "while" BExp "do" Stmt
+		| "return" AExp           [strict]
                 > "spawn" Stmt
                 > Stmt ";" Stmt           [strict(1), left]
                 | "(" Stmt ")"            [bracket]
@@ -24,12 +26,14 @@ module IMP
   syntax StmtVal ::= "skip"
 
   syntax Block ::= "var" Ids ";" Block
+  	       	 | "func" Id "(" Id ")" "=" "{" Block "}" Block
                  | Stmt
 
   syntax Ids ::= List{Id,","}          [strict]
   syntax AExps ::= List{AExp,","}      [strict]
 
-  syntax KResult ::= Bool | Int | String | StmtVal
+  syntax AValue  ::= Int | String
+  syntax KResult ::= Bool | StmtVal | AValue
          	 
   configuration <C color="yellow">
                   <threads>
@@ -43,6 +47,24 @@ module IMP
                   <in color="magenta" stream="stdin">  .List </in>
                   <out color="Orchid" stream="stdout"> .List </out>
                 </C>
+
+  // Rules for function declarations and calls are incomplete...
+
+  syntax Clos ::= "Closure" "(" Map "," Id "," Block ")"
+
+  rule <k> (func F:Id (X:Id) = { B:Block } BRest:Block => BRest) ...</k>
+       <env> Env:Map (. => F |-> Closure(Env,X,B)) </env>
+
+  syntax K ::= "FEnd" "(" Map ")"
+
+  rule <k> (F:Id (A:Int) => B ~> FEnd(E)) ...</k>
+       <env> E:Map( F |-> Closure(Env:Map, X, B)) => Env(X |-> N) </env>
+       <store> Rho:Map (. => N |-> A) </store>
+       <allocptr> N:Int => N +Int 1 </allocptr>
+       when notBool(X in keys(Env))
+
+  rule <k> (return Res:Int ~> FEnd(E:Map) => Res) ...</k>
+       <env> Env:Map => E </env>
 
   rule <k> var (X:Id, Xs:Ids => Xs) ; _ ... </k>
        <env> Env (. => X |-> N) </env>
