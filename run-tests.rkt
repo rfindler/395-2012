@@ -16,7 +16,7 @@
 
 (define krun 
   (or (find-executable-path "krun")
-      "/Users/robby/unison/proj/courses/395-2012-fall/k/k-latest/bin/krun"))
+      "k/bin/krun"))
 
 (unless (file-exists? krun) (error 'run-tests.rkt "could not find krun executable"))
 
@@ -125,6 +125,7 @@
 
 
 
+#|
 (module+ test
   (require rackunit)
   (check-equal? (parse-to-close-quote (open-input-string "1 1 2 3 5 8 13 21\\n\""))
@@ -140,6 +141,7 @@
      "  <store>   \n    0 |-> 21\n    1 |-> 34\n    2 |-> 1\n  </store> \n"
      "</C>\n"))
    '("1 1 2 3 5 8 13 21\n")))
+|#
 
 (define (catch-results/io thds)
   (let loop ([thds thds])
