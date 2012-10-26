@@ -1,0 +1,8 @@
+func addupto(x) = {
+   if (x >= 0) then
+      return x + addupto(x - 1)
+   else
+      return 0
+}
+print(addupto(10))
+  

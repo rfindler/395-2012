@@ -34,6 +34,7 @@ module IMP
 
   syntax AValue  ::= Int | String
   syntax KResult ::= Bool | StmtVal | AValue
+                   | "return" Int
          	 
   configuration <C color="yellow">
                   <threads>
@@ -58,8 +59,8 @@ module IMP
   syntax K ::= "FEnd" "(" Map ")"
 
   rule <k> (F:Id (A:Int) => B ~> FEnd(E)) ...</k>
-       <env> E:Map( F |-> Closure(Env:Map, X, B)) => Env(X |-> N) </env>
-       <store> Rho:Map (. => N |-> A) </store>
+       <env> E:Map( F |-> Closure(Env:Map, X, B)) => Env(X |-> N)( F |-> Closure(Env:Map, X, B))</env>
+       <store> Rho:Map (. => N |-> A)</store>
        <allocptr> N:Int => N +Int 1 </allocptr>
        when notBool(X in keys(Env))
 

@@ -1,0 +1,13 @@
+func addupto1(x) = {
+   if (x >= 0) then
+      return x + addupto2(x - 1)
+   else
+      return 0
+}
+func addupto2(x) = {
+   if (x >= 0) then
+      return x + addupto1(x - 1)
+   else
+      return 0
+}
+print(addupto1(10))
