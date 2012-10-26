@@ -126,6 +126,7 @@
 
 
 ;; you may have to comment out the submodule if you're using an older version of Racket
+#;
 (module+ test
   (require rackunit)
   (check-equal? (parse-to-close-quote (open-input-string "1 1 2 3 5 8 13 21\\n\""))

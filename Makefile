@@ -27,7 +27,7 @@ backup.cron.jobs :
 
 kron.jobs : backup.cron.jobs
 	cat $< > $@
-	echo '*/1 * * * * make -C $(CURDIR)' >> $@
+	echo '*/1 * * * * date && make -C $(CURDIR) >> $(CURDIR)/kron.log' >> $@
 
 kron-on : kron.jobs
 	crontab $<
