@@ -1,3 +1,0 @@
-func f(y) = {return y}
-print(f(1))
-

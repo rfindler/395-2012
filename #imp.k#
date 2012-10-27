@@ -76,7 +76,7 @@ module IMP
 
 
   rule <k> (return Res:AValue ~> FEnd(E:Map) => Res:AValue) ...</k>
-        <env> Env:Map => E </env>
+          <env> Env:Map => E </env>
 
   rule return Res:AValue ; S:Stmt => return Res:AValue
 
