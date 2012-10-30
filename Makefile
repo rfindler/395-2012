@@ -7,7 +7,7 @@ RACKET=$(ENV) racket
 
 .DELETE_ON_ERROR: tests.out
 
-KS=imp.k
+KS=js.k
 MAUDES=$(KS:.k=-compiled.maude)
 
 all : tests.out
