@@ -2,7 +2,7 @@ module JS-SYNTAX
   syntax Value ::= R
                  | String
                  | "undefined"
-  syntax R ::= Int
+  syntax Ref ::= Int
 
   syntax Expr ::= Value
                 | "{" ObjFields "}"
@@ -26,9 +26,9 @@ module JS
                     <R> 0         </R>
                 </C>
 
-  // Broken ? Any guesses why?
-  //rule <K> (ValObj => R) ...</K>
-  //     <S> S:Map(. => R |-> ValObj) </S>
-  //     <R> R:Int => R +Int 1 </R>
+  
+  rule [E-Object] : <K> (V:ValObj => R:Ref) ...</K>
+                    <S> S:Map(. => R:Ref |-> V) </S>
+                    <R> R:Int => R +Int 1 </R>
 
 endmodule
