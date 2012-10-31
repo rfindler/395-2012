@@ -6,5 +6,6 @@ k
 #*#
 test262
 tests.out
+kompiling.out
 kompile.out
 .DS_Store

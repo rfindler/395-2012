@@ -14,7 +14,7 @@ all : kontinuous
 
 kontinuous : 
 	# Use with make watch
-	while true ; do make kompile > kompile.out 2>&1 ; sleep .1 ; done
+	while true ; do make kompile > kompiling.out 2>&1 ; mv kompiling.out kompile.out ; sleep 1 ; done
 
 watch :
 	# Needs watch installed
