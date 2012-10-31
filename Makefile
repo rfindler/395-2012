@@ -7,7 +7,7 @@ RACKET=$(ENV) racket
 
 .DELETE_ON_ERROR: tests.out
 
-KS=js.k
+KS=$(wildcard *.k)
 MAUDES=$(KS:.k=-compiled.maude)
 
 all : kontinuous

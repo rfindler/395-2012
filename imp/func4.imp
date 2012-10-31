@@ -1,0 +1,7 @@
+func f(x) = {
+   return x;
+   print(1);
+   return 1;
+   print(2)
+}
+print(f(3))
