@@ -4,4 +4,6 @@ k
 *~
 *.jobs
 #*#
-
+test262
+*.out
+.DS_Store
