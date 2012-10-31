@@ -20,6 +20,7 @@ module JS
   syntax ValObjField ::= String ":" Value
   syntax ValObjFields ::= List{ValObjField,","}
   syntax ValObj ::= "{" ValObjFields "}"
+  syntax RefGet ::= Ref "[" String "]"
 
   configuration <C> <K> $PGM:Expr </K> 
                     <S> .Map      </S>
@@ -30,5 +31,7 @@ module JS
   rule [E-Object] : <K> (V:ValObj => R:Ref) ...</K>
                     <S> S:Map(. => R:Ref |-> V) </S>
                     <R> R:Int => R +Int 1 </R>
+
+  rule [E-GetField] : <K> (
 
 endmodule
