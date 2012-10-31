@@ -26,8 +26,9 @@ module JS
                     <R> 0         </R>
                 </C>
 
-  rule <K> (ValObj => R) ...</K>
-       <S> S:Map(. => R |-> ValObj) </S>
-       <R> R:Int => R +Int 1 </R>
+  // Broken ? Any guesses why?
+  //rule <K> (ValObj => R) ...</K>
+  //     <S> S:Map(. => R |-> ValObj) </S>
+  //     <R> R:Int => R +Int 1 </R>
 
 endmodule
