@@ -10,7 +10,19 @@ RACKET=$(ENV) racket
 KS=js.k
 MAUDES=$(KS:.k=-compiled.maude)
 
-all : tests.out
+all : kontinuous
+
+kontinuous : 
+	# Use with make watch
+	while true ; do make kompile > kompile.out 2>&1 ; sleep .1 ; done
+
+watch :
+	# Needs watch installed
+	watch -n 1 "cat kompile.out"
+
+test262 :
+	# Needs hg ; pegged to revision 334
+	hg clone -r 334 http://hg.ecmascript.org/tests/test262 $@
 
 kompile : $(MAUDES)
 
@@ -22,23 +34,5 @@ tests.out : $(MAUDES)
 	$(RACKET) run-tests.rkt >> $@
 	cat $@
 
-backup.cron.jobs :
-	crontab -l > $@
-
-kron.jobs : backup.cron.jobs
-	cat $< > $@
-	echo '*/1 * * * * date && make -C $(CURDIR) >> $(CURDIR)/kron.log' >> $@
-
-kron-on : kron.jobs
-	crontab $<
-
-kron-off :
-	crontab -r
-	@if [ -e backup.cron.jobs ] ; then \
-		echo crontab backup.cron.jobs ; \
-		crontab backup.cron.jobs ; \
-	fi
-	rm -f backup.cron.jobs kron.jobs
-
 clean :
-	rm -rf *.maude .k *.out
+	rm -rf *.maude .k *.out jstests
