@@ -10,6 +10,8 @@ module JS-SYNTAX
                 | Expr "[" Expr "]" "=" Expr
 
   syntax ObjFields ::= List{ObjField,","}
+
+  // Can't be 'String ":" Expr' because of parse errors in K
   syntax ObjField ::= String ">" Expr
 
 endmodule
@@ -23,11 +25,16 @@ module JS
   syntax ValObj ::= "{" ValObjFields "}"
   
   // Machinery For Object Maps 
-  syntax ValPair ::= ValObj "/-" Ref
+  // ValPair corresponds to new object is Staged
+  syntax ValPair ::= ValObj "!-" Ref
   syntax ObjMap ::= Obj(Map)
+  // GetField types correspond to "Staged" and "Done"
   syntax GetField ::= "?" String | "!" Value
+  // SetField types correspond to "Staged" and "Done" too
   syntax SetField ::= "??" Ref "[" String "]" "=" Value
                     | "!!" Ref Value
+
+  // Add in new "machinery" syntax for K cells
   syntax K ::= ValPair | ObjMap | GetField | SetField
 
   configuration <C color="yello">
@@ -58,12 +65,12 @@ module JS
      ECMA5 specs. */
 
   rule [ValPair-Intro] :
-       <K> (V:ValObj => V /- R ~> Obj(C)) ... </K>
+       <K> (V:ValObj => V !- R ~> Obj(C)) ... </K>
        <Stage> C:Map => .Map </Stage>
        <R> R:Ref => R +Int 1 </R>
 			 
   rule [ValPair-Elim] :
-       <K> ( { .ValObjFields } /- R : Ref ~> Obj(C:Map)
+       <K> ( { .ValObjFields } !- R : Ref ~> Obj(C:Map)
        	     => R ) ... </K>
        <Stage> O:Map => C </Stage>
        <S> S:Map(. => R |-> Obj(O)) </S>
@@ -72,16 +79,16 @@ module JS
   //// Case 1: Not in the array
   rule [ValPair-1] :
        <K> ({ S:String > V:Value
-            , Fields:ValObjFields } /- R : Ref
-	    => { Fields:ValObjFields } /- R) ... </K>
+            , Fields:ValObjFields } !- R : Ref
+	    => { Fields:ValObjFields } !- R) ... </K>
        <Stage> C:Map(. => S |-> V) </Stage>
        when notBool(S in keys(C))
 
   //// Case 2: Not in the array
   rule [ValPair-2] :
        <K> ({S:String > V:Value
-            , Fields:ValObjFields } /- R : Ref
-            => { Fields:ValObjFields } /- R) ... </K>
+            , Fields:ValObjFields } !- R : Ref
+            => { Fields:ValObjFields } !- R) ... </K>
        <Stage> C:Map(S |-> _ => S |-> V) </Stage>
 
   // GetField
