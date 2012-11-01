@@ -10,11 +10,10 @@ RACKET=$(ENV) racket
 KS=$(wildcard *.k)
 MAUDES=$(KS:.k=-compiled.maude)
 
-all : kontinuous
+all : kompile
 
 kontinuous : 
-	# Use with make watch
-	while true ; do make kompile > kompiling.out 2>&1 ; mv kompiling.out kompile.out ; sleep 1 ; done
+	@ while true ; do make kompile > kompiling.out 2>&1 ; mv kompiling.out kompile.out ; sleep 1 ; done
 
 watch :
 	# Needs watch installed
@@ -35,4 +34,4 @@ tests.out : $(MAUDES)
 	cat $@
 
 clean :
-	rm -rf *.maude .k *.out jstests
+	rm -rf *.maude .k *.out 
