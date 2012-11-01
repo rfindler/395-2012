@@ -36,11 +36,24 @@ module JS
                 </C>
 
   /* Basic rules for records (\S4 of \cite{Gibbs2012}) */
-  // This won't work with GetField
 
+  // This won't work with GetField
   //rule [E-Object] : <K> (V:ValObj => R:Ref) ...</K>
   //                  <S> S:Map(. => R:Ref |-> V) </S>
   //                  <R> R:Ref => R +Int 1 </R>
+
+  /* To create a record, we will want to make a map
+
+     To do this, we need a staging area for constructing
+     the map.
+
+     The semantics in \cite{Gibbs2012} underspecify
+     what to do when there are duplicate fields.
+     I suggest testing in your favorite reference
+     javascript console to see what is going on for now.
+     
+     Ultimately we should dig up what to do in the
+     ECMA5 specs. */
 
   rule [ValPair-Intro] :
        <K> (V:ValObj => V /- R ~> Obj(C)) ... </K>
@@ -98,7 +111,7 @@ module JS
   rule [E-Field-Cleanup] :
        <K> ( ! V ~> Obj(C:Map)  => V ) ... </K>
        <Stage> _ => C </Stage>
-      
+ 
 endmodule
 
 // TODO: Make a bibliograph with bibtex
