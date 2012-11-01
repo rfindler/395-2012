@@ -17,7 +17,7 @@ kontinuous :
 
 watch :
 	# Needs watch installed
-	watch -n 1 "cat kompile.out"
+	watch -n 1 "echo cat kompile.out: ; cat kompile.out ; echo ; echo cat kompiling.out: ; cat kompiling.out "
 
 test262 :
 	# Needs hg ; pegged to revision 334
