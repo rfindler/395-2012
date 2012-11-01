@@ -25,8 +25,10 @@ module JS
   // Machinery For Object Maps 
   syntax ValPair ::= ValObj "/-" Ref
   syntax ObjMap ::= Obj(Map)
-  syntax LookUp ::= "?" String | "!" Value
-  syntax K ::= ValPair | ObjMap | Lookup
+  syntax GetField ::= "?" String | "!" Value
+  syntax SetField ::= "??" Ref "[" String "]" "=" Value
+                    | "!!" Ref Value
+  syntax K ::= ValPair | ObjMap | GetField | SetField
 
   configuration <C color="yello">
                     <K color="green">   $PGM:Expr </K>
@@ -111,7 +113,42 @@ module JS
   rule [E-Field-Cleanup] :
        <K> ( ! V ~> Obj(C:Map)  => V ) ... </K>
        <Stage> _ => C </Stage>
- 
+
+  // SetField
+  //// Case 0: When reference DNE, throw ReferenceError
+  ////         (not handled)
+  //// Assume reference exists and stage object map
+  rule [E-SetField-Stage] :
+       <K> ( R:Ref [ Str:String ] = V:Value
+           => ?? R [Str] = V ~> Obj(C) ) ... </K>
+       <Stage> C => O </Stage> 
+       <S> S( R |-> Obj(O:Map) ) </S>
+
+  //// Stage is set, now do work     
+  //// Case 1: Field DNE
+  rule [E-SetField-1] :
+       <K> ( ? R:Ref [ Str:String ] = V:Value
+           => !! R V ) ... </K>
+       <Stage> O:Map(. => Str |-> V) </Stage>
+       when notBool(Str in keys(O))
+       
+  //// Case 2: Field Exists
+  rule [E-SetField-1] :
+       <K> ( ? R:Ref [Str:String] = V:Value
+           => !! R V ) ... </K>
+       <Stage> O(Str |-> _ => Str |-> V) </Stage>
+
+  /*
+   Cleanup :
+     (1) Pop old stage back
+     (2) Update Reference with changes made
+  */
+  
+  rule [E-SetField-Cleanup] :
+       <K> ( !! R V ~> Obj(C:Map) => V ) ... </K>
+       <Stage> O:Map => C </Stage>
+       <S> S( R |-> _ => R |-> Obj(O) ) </S>
+       
 endmodule
 
 // TODO: Make a bibliograph with bibtex
