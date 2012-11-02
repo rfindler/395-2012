@@ -25,7 +25,7 @@
     (filter
      thread?
      (for/list ([file (in-directory tests)])
-       (when (regexp-match #rx"[.]imp$" (path->string file))
+       (when (regexp-match #rx"[.]js$" (path->string file))
          (define out-files (find-out-files file))
          (cond
            [(null? out-files)
