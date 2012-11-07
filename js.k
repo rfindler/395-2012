@@ -1,18 +1,20 @@
+require "modules/substitution.k"
+
 module JS-SYNTAX
   syntax Value ::= Ref
                  | String
                  | "undefined"
-		 > "lamb" Id "." Expr       // [binder]
+		 > "lamb" Id "." Expr        [binder]
 
   syntax Ref ::= Int
 
-  syntax Expr ::= Value
-                | "(" Expr ")"               [bracket]
+  syntax Expr ::= "(" Expr ")"               [bracket]
                 | "{" ObjFields "}"          [strict]
                 | Expr "[" Expr "]"          [seqstrict]
                 | Expr "[" Expr "]" "=" Expr [seqstrict]
 		| Id
-		| Expr Expr                  [seqstrict]
+		| Expr Expr                  [seqstrict, left]
+                > Value
 
   syntax ObjFields ::= List{ObjField,","}    [seqstrict]
   syntax ObjField ::= String ":" Expr        [strict(2)]
@@ -21,6 +23,7 @@ endmodule
 
 module JS
   imports JS-SYNTAX
+  imports SUBSTITUTION
 
   syntax ValObjField ::= String ":" Value
   syntax ValObjFields ::= List{ValObjField,","}
@@ -43,7 +46,6 @@ module JS
   rule <k> ( Str:String : V:Value, O:ValObjFields => O) ...</k>
        <Stage> M:Map=>M[V / Str] </Stage>
 
-  
   rule <k> ( .ValObjFields ~> Obj(Old:Map) => R ) ...</k>
        <Stage> M:Map => Old </Stage>
        <S> S:Map(. => R |-> Obj(M) ) </S>
@@ -62,6 +64,7 @@ module JS
        <k> ( R:Ref [Str:String] = V:Value => V ) ...</k>
        <S> S:Map(R |-> Obj(M:Map=>M[V / Str])) </S>
 
-//  rule (lamb X:Id .  E:Expr) Arg:Value  => E[Arg / X]
+  rule [App] : 
+       (lamb X:Id . E:Expr) V:Value  => E[V / X]
   
 endmodule
