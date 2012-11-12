@@ -14,7 +14,7 @@ module JS-SYNTAX
                 | Expr "[" Expr "]"          [seqstrict]
                 | Expr "[" Expr "]" "=" Expr [seqstrict]
                 | Id
-                | Expr Expr                  [seqstrict, left]
+                | Expr "(" Expr ")"          [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
                 > Value
 
@@ -113,14 +113,14 @@ module JS
        when notBool(Str in keys(M))
 
   rule [E-Setter] :
-       <k> ( R:Ref [Str:String] = V:Value => F V ~> SetRet(V)) ... </k>
+       <k> ( R:Ref [Str:String] = V:Value => F(V) ~> SetRet(V)) ... </k>
        <S> S:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Lambda))) </S>
   
   rule [Setter-Return]:
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
 
   rule [App] : 
-       (lamb X:Id . E:Expr) V:Value  => E[V / X]
+       (lamb X:Id . E:Expr)(V:Value) => E[V / X]
   
   rule [Printing] :
        <k> ( print ( V:Value ) => undefined) ... </k>

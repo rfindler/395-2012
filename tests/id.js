@@ -1,1 +1,1 @@
-(lamb x.x) "a"
+(lamb x.x)("a")
