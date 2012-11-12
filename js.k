@@ -15,7 +15,7 @@ module JS-SYNTAX
                 | Expr "[" Expr "]" "=" Expr [seqstrict]
                 | Id
                 | Expr Expr                  [seqstrict, left]
-                | "Print" "(" Expr ")"       [strict]
+                | "print" "(" Expr ")"       [strict]
                 > Value
 
   syntax ObjFields ::= List{ObjField,","}    [seqstrict]
@@ -123,7 +123,7 @@ module JS
        (lamb X:Id . E:Expr) V:Value  => E[V / X]
   
   rule [Printing] :
-       <k> (Print(V:Value) => undefined) ... </k>
-       <out>... (. => ListItem(V)) </out>
-    
+       <k> ( print ( V:Value ) => undefined) ... </k>
+       <out> ... (. => ListItem(V)) </out>
+
 endmodule
