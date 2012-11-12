@@ -18,6 +18,9 @@ module JS-SYNTAX
                 | "print" "(" Expr ")"       [strict]
                 > Value
 
+  syntax Stmt ::= Expr
+                > Stmt ";" Stmt              [strict(1), left]
+
   syntax ObjFields ::= List{ObjField,","}    [seqstrict]
   syntax ObjField ::= String ":" Expr        [strict(2)]
                     | GetterSetter
@@ -50,7 +53,7 @@ module JS
   syntax KResult ::= Value | ValObjField
 
   configuration <C>
-                    <k> $PGM:Expr </k>
+                    <k> $PGM:Stmt </k>
                     <Stage> .Map </Stage>
                     <S> .Map </S>
                     <R> 0 </R>
@@ -125,5 +128,7 @@ module JS
   rule [Printing] :
        <k> ( print ( V:Value ) => undefined) ... </k>
        <out> ... (. => ListItem(V)) </out>
+
+  rule undefined ; S:Stmt => S [structural]
 
 endmodule
