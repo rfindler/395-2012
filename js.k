@@ -16,6 +16,7 @@ module JS-SYNTAX
                 | Id
                 | Expr "(" Expr ")"          [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
+                | "var" Id "=" Expr          [strict(2)]
                 > Value
 
   syntax Stmt ::= Expr
@@ -55,6 +56,7 @@ module JS
   configuration <C>
                     <k> $PGM:Stmt </k>
                     <Stage> .Map </Stage>
+                    <E> .Map </E>
                     <S> .Map </S>
                     <R> 0 </R>
                     <in stream="stdin"> .List </in>
@@ -128,6 +130,17 @@ module JS
   rule [Printing] :
        <k> ( print ( V:Value ) => undefined) ... </k>
        <out> ... (. => ListItem(V)) </out>
+
+  rule [E-Assign]:
+       <k> ( var I:Id = V:Value => undefined ) ... </k>
+       <S> S:Map( . => R |-> V ) </S>
+       <R> R:Ref => R +Int 1 </R>
+       <E> E:Map( . => I |-> R ) </E>
+
+  rule [E-Loc]:
+       <k> ( I:Id => V ) ... </k>
+       <S> S:Map( R |-> V:Value ) </S>
+       <E> E:Map( I |-> R:Ref ) </E>
 
   rule undefined ; S:Stmt => S [structural]
 
