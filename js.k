@@ -110,12 +110,7 @@ module JS
  
   rule [E-SetField] :
        <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
-       <S> S:Map(R |-> Obj(M:Map(Str |-> V1:Value ) => M[V / Str])) </S>
-  
-  rule [E-AddField] :
-       <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
        <S> S:Map(R |-> Obj(M:Map => M[V / Str])) </S>
-       when notBool(Str in keys(M))
 
   rule [E-Setter] :
        <k> ( R:Ref [Str:String] = V:Value => F(V) ~> SetRet(V)) ... </k>
