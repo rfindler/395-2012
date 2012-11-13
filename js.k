@@ -66,7 +66,8 @@ module JS
                     <k> $PGM:Stmt </k>
                     <Stage> .Map </Stage>
                     <E> 0 </E>
-                    <S> Map( 0 |-> Scope(null, .Map) ) </S>
+                    <Store> .Map </Store>
+                    <ObjStore> Map( 0 |-> Scope(null, .Map) ) </ObjStore>
                     <R> 1 </R>
                     <in stream="stdin"> .List </in>
                     <out stream="stdout"> .List </out>
@@ -101,47 +102,47 @@ module JS
   rule [Reference-Object]:
        <k> ( .ValObjFields ~> Obj(Old:Map) => R ) ... </k>
        <Stage> M:Map => Old </Stage>
-       <S> S:Map(. => R |-> Obj(M) ) </S>
+       <ObjStore> OS:Map(. => R |-> Obj(M) ) </ObjStore>
        <R> R:Ref => R +Int 1 </R>
                     
   rule [E-GetField] :
        <k> ( R:Ref [ Str : String ] => V) ... </k>
-       <S> S:Map( R |-> Obj(O:Map(Str |-> V:Value))) </S>
+       <ObjStore> OS:Map( R |-> Obj(O:Map(Str |-> V:Value))) </ObjStore>
        
   rule [E-NoField] :
        <k> ( R:Ref [ Str : String ] => undefined) ... </k>
-       <S> S:Map( R |-> Obj(O)) </S>
+       <ObjStore> OS:Map( R |-> Obj(O)) </ObjStore>
        when notBool(Str in keys(O))
 
   rule [E-Getter] :
        <k> ( R:Ref [ Str : String ] => E) ... </k>
-       <S> S:Map(R |-> Obj(O:Map(Str |-> E:Expr ** F))) </S>
+       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> E:Expr ** F))) </ObjStore>
  
   rule [E-SetField] :
        <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
-       <S> S:Map(R |-> Obj(M:Map => M[V / Str])) </S>
+       <ObjStore> OS:Map(R |-> Obj(M:Map => M[V / Str])) </ObjStore>
 
   rule [E-Setter] :
        <k> ( R:Ref [Str:String] = V:Value => F(V) ~> SetRet(V)) ... </k>
-       <S> S:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Lambda))) </S>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Lambda))) </ObjStore>
   
   rule [Setter-Return]:
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
 
   rule [E-Apply] :
        <k> ( (function (I:Id) { Body:Stmt })(V:Value) => var I = V; Body ~> FEnd ) ... </k>
-       <S> S:Map (. => R |-> Scope(Env, .Map)) </S>
+       <ObjStore> OS:Map (. => R |-> Scope(Env, .Map)) </ObjStore>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref => R </E>
 
   rule [E-ApplyEnd] :
        <k> ( V:Value ~> FEnd => undefined ) ... </k>
-       <S> S:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </S>
+       <ObjStore> OS:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </ObjStore>
        <E> Env:Ref => ContextEnv </E>
 
   rule [E-ApplyReturn] :
        <k> ( return V:RetValue ~> FEnd => V ) ... </k>
-       <S> S:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </S>
+       <ObjStore> OS:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </ObjStore>
        <E> Env:Ref => ContextEnv </E>
 
   rule return V:RetValue ; S:Stmt => return V
@@ -152,13 +153,15 @@ module JS
 
   rule [E-Assign]:
        <k> ( var I:Id = V:Value => undefined ) ... </k>
-       <S> S:Map ( Env |-> Scope(_, M:Map => M[R / I]) ) (. => R |-> V) </S>
+       <Store> S:Map (. => R |-> V) </Store>
+       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / I]) ) </ObjStore>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref </E>
 
   rule [E-Loc]:
        <k> ( I:Id => V ) ... </k>
-       <S> S:Map( Env |-> Scope(_, M:Map(I |-> R:Ref)) ) (R |-> V:Value) </S>
+       <Store> S:Map (R |-> V:Value) </Store>
+       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map(I |-> R:Ref)) ) </ObjStore>
        <E> Env:Ref </E>
 
   rule undefined ; S:Stmt => S [structural]
