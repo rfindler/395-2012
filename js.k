@@ -6,7 +6,7 @@ module JS-SYNTAX
                  | "undefined"
                  | "null"
                  > Lambda
-  syntax Lambda ::= "lamb" Id "." Expr       [binder]
+  syntax Lambda ::= "function" "(" Id ")" "{" Expr "}" [binder]
 
   syntax Ref ::= Int
 
@@ -85,11 +85,11 @@ module JS
   
   rule [Setter-Update]:
        <k> (set S:String ( I:Id ) { E:Expr }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(S |-> F ** (F1 => (lamb I . E))) </Stage>
+       <Stage> M:Map(S |-> F ** (F1 => ( function (I) { E } ))) </Stage>
 
   rule [Setter-Intro]:
        <k> (set S:String ( I:Id ) { E:Expr }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => S |-> nofun ** (lamb I . E)) </Stage>
+       <Stage> M:Map(. => S |-> nofun ** ( function (I) { E } )) </Stage>
        when notBool(S in keys(M)) 
                 
   rule [Reference-Object]:
@@ -123,7 +123,7 @@ module JS
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
 
   rule [App] : 
-       (lamb X:Id . E:Expr)(V:Value) => E[V / X]
+       (function (X:Id) { E:Expr })(V:Value) => E[V / X]
   
   rule [Printing] :
        <k> ( print ( V:Value ) => undefined) ... </k>

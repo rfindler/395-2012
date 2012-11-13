@@ -1,1 +1,1 @@
-(lamb x.x)("a")
+(function(x) { x })("a")
