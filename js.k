@@ -21,6 +21,7 @@ module JS-SYNTAX
                 > Value
 
   syntax Stmt ::= Expr
+                | "return" Expr              [strict]
                 > Stmt ";" Stmt              [strict(1), left]
 
   syntax ObjFields ::= List{ObjField,","}    [seqstrict]
@@ -51,10 +52,14 @@ module JS
   syntax MaybeFun ::= Lambda
                     | "nofun"
 
-  syntax SetterReturn ::= SetRet(Value)                                      
-                
+  syntax SetterReturn ::= SetRet(Value)
+
+  syntax RetValue ::= Ref
+                    | String
+                    > Lambda
+
   syntax K ::= ObjMap | SetterReturn | "FEnd"
-  syntax KResult ::= Value | ValObjField
+  syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue
 
   configuration <C>
                     <k> $PGM:Stmt </k>
@@ -132,6 +137,13 @@ module JS
        <k> ( V:Value ~> FEnd => undefined ) ... </k>
        <S> S:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </S>
        <E> Env:Ref => ContextEnv </E>
+
+  rule [E-ApplyReturn] :
+       <k> ( return V:RetValue ~> FEnd => V ) ... </k>
+       <S> S:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </S>
+       <E> Env:Ref => ContextEnv </E>
+
+  rule return V:RetValue ; S:Stmt => return V
 
   rule [Printing] :
        <k> ( print ( V:Value ) => undefined) ... </k>
