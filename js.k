@@ -6,7 +6,7 @@ module JS-SYNTAX
                  | "undefined"
                  | "null"
                  > Lambda
-  syntax Lambda ::= "function" "(" Id ")" "{" Expr "}" [binder]
+  syntax Lambda ::= "function" "(" Id ")" "{" Stmt "}" [binder]
 
   syntax Ref ::= Int
 
@@ -123,7 +123,7 @@ module JS
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
 
   rule [E-Apply] :
-       <k> ( (function (I:Id) { E:Expr })(V:Value) => var I = V; E ~> FEnd ) ... </k>
+       <k> ( (function (I:Id) { Body:Stmt })(V:Value) => var I = V; Body ~> FEnd ) ... </k>
        <S> S:Map (. => R |-> Scope(Env, .Map)) </S>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref => R </E>
