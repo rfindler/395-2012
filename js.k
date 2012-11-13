@@ -37,13 +37,15 @@ module JS
   imports JS-SYNTAX
   imports SUBSTITUTION
 
+  syntax ScopeObj ::= Scope(Value, Map) [strict(1)]
+
   syntax ValObjField ::= String ":" Value
                        | GetterSetter
                  
   syntax ValObjFields ::= List{ValObjField,","}
   syntax ValObj ::= "{" ValObjFields "}"
   syntax ObjMap ::= Obj(Map)
-  
+
   // Used to map strings to <getter> ** <setter> pairs
   syntax AccessPair ::= MaybeFun "**" MaybeFun 
   syntax MaybeFun ::= Lambda
@@ -57,9 +59,9 @@ module JS
   configuration <C>
                     <k> $PGM:Stmt </k>
                     <Stage> .Map </Stage>
-                    <E> .Map </E>
-                    <S> .Map </S>
-                    <R> 0 </R>
+                    <E> 0 </E>
+                    <S> Map( 0 |-> Scope(null, .Map) ) </S>
+                    <R> 1 </R>
                     <in stream="stdin"> .List </in>
                     <out stream="stdout"> .List </out>
                 </C>
@@ -129,14 +131,14 @@ module JS
 
   rule [E-Assign]:
        <k> ( var I:Id = V:Value => undefined ) ... </k>
-       <S> S:Map( . => R |-> V ) </S>
+       <S> S:Map ( Env |-> Scope(null, M:Map => M[R / I]) ) (. => R |-> V) </S>
        <R> R:Ref => R +Int 1 </R>
-       <E> E:Map( . => I |-> R ) </E>
+       <E> Env:Ref </E>
 
   rule [E-Loc]:
        <k> ( I:Id => V ) ... </k>
-       <S> S:Map( R |-> V:Value ) </S>
-       <E> E:Map( I |-> R:Ref ) </E>
+       <S> S:Map( Env |-> Scope(null, M:Map(I |-> R:Ref)) ) (R |-> V:Value) </S>
+       <E> Env:Ref </E>
 
   rule undefined ; S:Stmt => S [structural]
 
