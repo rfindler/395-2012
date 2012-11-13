@@ -53,7 +53,7 @@ module JS
 
   syntax SetterReturn ::= SetRet(Value)                                      
                 
-  syntax K ::= ObjMap | SetterReturn
+  syntax K ::= ObjMap | SetterReturn | "FEnd"
   syntax KResult ::= Value | ValObjField
 
   configuration <C>
@@ -122,22 +122,30 @@ module JS
   rule [Setter-Return]:
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
 
-  rule [App] : 
-       (function (X:Id) { E:Expr })(V:Value) => E[V / X]
-  
+  rule [E-Apply] :
+       <k> ( (function (I:Id) { E:Expr })(V:Value) => var I = V; E ~> FEnd ) ... </k>
+       <S> S:Map (. => R |-> Scope(Env, .Map)) </S>
+       <R> R:Ref => R +Int 1 </R>
+       <E> Env:Ref => R </E>
+
+  rule [E-ApplyEnd] :
+       <k> ( V:Value ~> FEnd => undefined ) ... </k>
+       <S> S:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </S>
+       <E> Env:Ref => ContextEnv </E>
+
   rule [Printing] :
        <k> ( print ( V:Value ) => undefined) ... </k>
        <out> ... (. => ListItem(V)) </out>
 
   rule [E-Assign]:
        <k> ( var I:Id = V:Value => undefined ) ... </k>
-       <S> S:Map ( Env |-> Scope(null, M:Map => M[R / I]) ) (. => R |-> V) </S>
+       <S> S:Map ( Env |-> Scope(_, M:Map => M[R / I]) ) (. => R |-> V) </S>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref </E>
 
   rule [E-Loc]:
        <k> ( I:Id => V ) ... </k>
-       <S> S:Map( Env |-> Scope(null, M:Map(I |-> R:Ref)) ) (R |-> V:Value) </S>
+       <S> S:Map( Env |-> Scope(_, M:Map(I |-> R:Ref)) ) (R |-> V:Value) </S>
        <E> Env:Ref </E>
 
   rule undefined ; S:Stmt => S [structural]
