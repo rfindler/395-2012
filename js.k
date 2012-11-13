@@ -4,6 +4,7 @@ module JS-SYNTAX
   syntax Value ::= Ref
                  | String
                  | "undefined"
+                 | "null"
                  > Lambda
   syntax Lambda ::= "lamb" Id "." Expr       [binder]
 
