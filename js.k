@@ -1,14 +1,15 @@
 require "modules/substitution.k"
 
 module JS-SYNTAX
+  syntax Ref ::= Int
+
+  syntax Lambda ::= "function" "(" Id ")" "{" Stmt "}" [binder]
+
   syntax Value ::= Ref
                  | String
                  | "undefined"
                  | "null"
                  > Lambda
-  syntax Lambda ::= "function" "(" Id ")" "{" Stmt "}" [binder]
-
-  syntax Ref ::= Int
 
   syntax Expr ::= "(" Expr ")"               [bracket]
                 | "{" ObjFields "}"          [strict]
