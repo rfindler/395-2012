@@ -18,6 +18,7 @@ module JS-SYNTAX
                 | Id
                 | Expr "(" Expr ")"          [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
+                | "var" Id
                 | "var" Id "=" Expr          [strict(2)]
                 > Value
 
@@ -150,6 +151,13 @@ module JS
   rule [Printing] :
        <k> ( print ( V:Value ) => undefined) ... </k>
        <out> ... (. => ListItem(V)) </out>
+
+  rule [Declare]:
+       <k> ( var I:Id => undefined ) ... </k>
+       <Store> S:Map (. => R |-> "undefined") </Store>
+       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / I]) ) </ObjStore>
+       <R> R:Ref => R +Int 1 </R>
+       <E> Env:Ref </E>
 
   rule [E-Assign]:
        <k> ( var I:Id = V:Value => undefined ) ... </k>
