@@ -11,6 +11,11 @@ module JS-SYNTAX
                  | "null"
                  > Lambda
 
+  syntax VarExpr ::= Id
+                   | Id "=" Expr             [strict(2)]
+
+  syntax VarExprs ::= List{VarExpr,","}
+
   syntax Expr ::= "(" Expr ")"               [bracket]
                 | "{" ObjFields "}"          [strict]
                 | Expr "[" Expr "]"          [seqstrict]
@@ -18,8 +23,7 @@ module JS-SYNTAX
                 | Id
                 | Expr "(" Expr ")"          [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
-                | "var" Id
-                | "var" Id "=" Expr          [strict(2)]
+                | "var" VarExprs
                 > Value
 
   syntax Stmt ::= Expr
@@ -153,23 +157,25 @@ module JS
        <out> ... (. => ListItem(V)) </out>
 
   rule [Declare]:
-       <k> ( var I:Id => undefined ) ... </k>
-       <Store> S:Map (. => R |-> "undefined") </Store>
-       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / I]) ) </ObjStore>
+       <k> var (X:Id, Xs:VarExprs => Xs) ... </k>
+       <Store> S:Map (. => R |-> undefined) </Store>
+       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </ObjStore>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref </E>
 
   rule [E-Assign]:
-       <k> ( var I:Id = V:Value => undefined ) ... </k>
+       <k> var (X:Id = V:Value, Xs:VarExprs => Xs) ... </k>
        <Store> S:Map (. => R |-> V) </Store>
-       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / I]) ) </ObjStore>
+       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </ObjStore>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref </E>
 
+  rule var .VarExprs => undefined [structural]
+
   rule [E-Loc]:
-       <k> ( I:Id => V ) ... </k>
+       <k> ( X:Id => V ) ... </k>
        <Store> S:Map (R |-> V:Value) </Store>
-       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map(I |-> R:Ref)) ) </ObjStore>
+       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map(X |-> R:Ref)) ) </ObjStore>
        <E> Env:Ref </E>
 
   rule undefined ; S:Stmt => S [structural]
