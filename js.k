@@ -3,32 +3,35 @@ require "modules/substitution.k"
 module JS-SYNTAX
   syntax Ref ::= Int
 
-  syntax Lambda ::= "function" "(" Id ")" "{" Stmt "}" [binder]
+  syntax Func ::= "function" "(" Ids ")" "{" Stmt "}" [binder]
 
   syntax Value ::= Ref
                  | String
                  | "undefined"
                  | "null"
-                 > Lambda
+                 > Func
 
   syntax VarExpr ::= Id
                    | Id "=" Expr             [strict(2)]
 
   syntax VarExprs ::= List{VarExpr,","}
 
-  syntax Expr ::= "(" Expr ")"               [bracket]
-                | "{" ObjFields "}"          [strict]
+  syntax Expr ::= "{" ObjFields "}"          [strict]
                 | Expr "[" Expr "]"          [seqstrict]
                 | Expr "[" Expr "]" "=" Expr [seqstrict]
                 | Id
-                | Expr "(" Expr ")"          [seqstrict, left]
+                | Expr "(" Values ")"        [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
-                | "var" VarExprs
-                > Value
+                > "(" Expr ")"               [bracket]
+                | Value
 
   syntax Stmt ::= Expr
+                | "var" VarExprs
                 | "return" Expr              [strict]
                 > Stmt ";" Stmt              [strict(1), left]
+
+  syntax Ids ::= List{Id,","}                [strict]
+  syntax Values ::= List{Value,","}          [strict]
 
   syntax ObjFields ::= List{ObjField,","}    [seqstrict]
   syntax ObjField ::= String ":" Expr        [strict(2)]
@@ -46,6 +49,8 @@ module JS
 
   syntax ScopeObj ::= Scope(Value, Map) [strict(1)]
 
+  syntax Lambda ::= "FBegin" Ids "**" Values "**" Stmt [strict(2)]
+
   syntax ValObjField ::= String ":" Value
                        | GetterSetter
                  
@@ -55,14 +60,14 @@ module JS
 
   // Used to map strings to <getter> ** <setter> pairs
   syntax AccessPair ::= MaybeFun "**" MaybeFun 
-  syntax MaybeFun ::= Lambda
+  syntax MaybeFun ::= Func
                     | "nofun"
 
   syntax SetterReturn ::= SetRet(Value)
 
   syntax RetValue ::= Ref
                     | String
-                    > Lambda
+                    > Func
 
   syntax K ::= ObjMap | SetterReturn | "FEnd"
   syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue
@@ -129,16 +134,25 @@ module JS
 
   rule [E-Setter] :
        <k> ( R:Ref [Str:String] = V:Value => F(V) ~> SetRet(V)) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Lambda))) </ObjStore>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Func))) </ObjStore>
   
   rule [Setter-Return]:
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
 
-  rule [E-Apply] :
-       <k> ( (function (I:Id) { Body:Stmt })(V:Value) => var I = V; Body ~> FEnd ) ... </k>
+  rule [E-ApplyBegin] :
+       <k> ( (function (Xs:Ids) { Body:Stmt })(Vs:Values) => FBegin Xs ** Vs ** Body ~> FEnd ) ... </k>
        <ObjStore> OS:Map (. => R |-> Scope(Env, .Map)) </ObjStore>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref => R </E>
+
+  rule [E-ApplyBindParameters] :
+       <k> ( FBegin X:Id, Xs:Ids ** V:Value, Vs:Values ** Body => FBegin Xs ** Vs ** Body ) ... </k>
+       <Store> S:Map (. => R |-> V) </Store>
+       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </ObjStore>
+       <R> R:Ref => R +Int 1 </R>
+       <E> Env:Ref </E>
+
+  rule FBegin .Ids ** .Values ** Body:Stmt => Body
 
   rule [E-ApplyEnd] :
        <k> ( V:Value ~> FEnd => undefined ) ... </k>
