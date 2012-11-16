@@ -9,7 +9,6 @@ module JS-SYNTAX
                  | String
                  | "undefined"
                  | "null"
-                 > Func
 
   syntax VarExpr ::= Id
                    | Id "=" Expr             [strict(2)]
@@ -20,6 +19,7 @@ module JS-SYNTAX
                 | Expr "[" Expr "]"          [seqstrict]
                 | Expr "[" Expr "]" "=" Expr [seqstrict]
                 | Id
+                | Func
                 | Expr "(" Values ")"        [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
                 > "(" Expr ")"               [bracket]
@@ -32,6 +32,8 @@ module JS-SYNTAX
 
   syntax Ids ::= List{Id,","}                [strict]
   syntax Values ::= List{Value,","}          [strict]
+  
+  syntax Refs ::= List{Ref,","}
 
   syntax ObjFields ::= List{ObjField,","}    [seqstrict]
   syntax ObjField ::= String ":" Expr        [strict(2)]
@@ -47,7 +49,7 @@ module JS
   imports JS-SYNTAX
   imports SUBSTITUTION
 
-  syntax ScopeObj ::= Scope(Value, Map)                 [strict(1)]
+  syntax ScopeObj ::= Scope(Value, Map)
 
   syntax Lambda ::= "FBegin" Ids "**" Values "**" Stmt  [strict(2)]
 
@@ -56,7 +58,7 @@ module JS
                  
   syntax ValObjFields ::= List{ValObjField,","}
   syntax ValObj ::= "{" ValObjFields "}"
-  syntax ObjMap ::= Obj(Map)
+  syntax ObjMap ::= Obj(Map, MaybeFuncObj)
 
   // Used to map strings to <getter> ** <setter> pairs
   syntax AccessPair ::= MaybeFun "**" MaybeFun 
@@ -67,17 +69,22 @@ module JS
 
   syntax RetValue ::= Ref
                     | String
-                    > Func
+                    
+  syntax FuncObj ::= FuncObj(Ref, Ids, Stmt)
+  
+  syntax MaybeFuncObj ::= FuncObj
+                        | "nofunobj"
+  
+  syntax CurEnv  ::= env(Ref)
 
-  syntax K ::= ObjMap | SetterReturn | "FEnd"
-  syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue
+  syntax K ::= ObjMap | SetterReturn | "FEnd" Rs
+  syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue 
 
   configuration <C>
                     <k> $PGM:Stmt </k>
                     <Stage> .Map </Stage>
-                    <E> 0 </E>
-                    <Store> .Map </Store>
-                    <ObjStore> Map( 0 |-> Scope(null, .Map) ) </ObjStore>
+                    <ObjStore> .Map </ObjStore>
+                    <Scope> 0, .Refs </Scope>
                     <R> 1 </R>
                     <in stream="stdin"> .List </in>
                     <out stream="stdout"> .List </out>
@@ -90,7 +97,7 @@ module JS
    */
 
   rule [Object-Intro]:
-       <k> ( { O:ValObjFields } => O ~> Obj(M) ) ... </k>
+       <k> ( { O:ValObjFields } => O ~> Obj(M, nofunobj) ) ... </k>
        <Stage> M:Map => .Map </Stage>
 
   rule [Property-Intro]:
@@ -98,23 +105,23 @@ module JS
        <Stage> M:Map => M[V / Str] </Stage> 
 
   rule [Reference-Object]:
-       <k> ( .ValObjFields ~> Obj(Old:Map) => R ) ... </k>
+       <k> ( .ValObjFields ~> Obj(Old:Map, nofunobj) => R ) ... </k>
        <Stage> M:Map => Old </Stage>
-       <ObjStore> OS:Map(. => R |-> Obj(M) ) </ObjStore>
+       <ObjStore> OS:Map(. => R |-> Obj(M, nofunobj) ) </ObjStore>
        <R> R:Ref => R +Int 1 </R> 
 
   rule [E-GetField] :
        <k> ( R:Ref [ Str : String ] => V) ... </k>
-       <ObjStore> OS:Map( R |-> Obj(O:Map(Str |-> V:Value))) </ObjStore>
+       <ObjStore> OS:Map( R |-> Obj(O:Map(Str |-> V:Value), _)) </ObjStore>
        
   rule [E-NoField] :
        <k> ( R:Ref [ Str : String ] => undefined) ... </k>
-       <ObjStore> OS:Map( R |-> Obj(O)) </ObjStore>
+       <ObjStore> OS:Map( R |-> Obj(O, _)) </ObjStore>
        when notBool(Str in keys(O))
 
   rule [E-SetField] :
        <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map => M[V / Str])) </ObjStore>
+       <ObjStore> OS:Map(R |-> Obj(M:Map => M[V / Str], _)) </ObjStore>
 
   /**
    * Getters
@@ -131,7 +138,7 @@ module JS
 
   rule [E-Getter] :
        <k> ( R:Ref [ Str : String ] => E) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> E:Expr ** F))) </ObjStore>
+       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> E:Expr ** F, _))) </ObjStore>
   
   /**
    * Setters
@@ -148,7 +155,7 @@ module JS
                     
   rule [E-Setter] :
        <k> ( R:Ref [Str:String] = V:Value => F(V) ~> SetRet(V)) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Func))) </ObjStore>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Func), _)) </ObjStore>
   
   rule [Setter-Return]:
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
@@ -156,34 +163,42 @@ module JS
   /**
    * Function Application
    */
-
-  rule [E-ApplyBegin] :
-       <k> ( (function (Xs:Ids) { Body:Stmt })(Vs:Values) => FBegin Xs ** Vs ** Body ~> FEnd ) ... </k>
-       <ObjStore> OS:Map (. => R |-> Scope(Env, .Map)) </ObjStore>
+  rule [E-FuncDefine] :
+       <k> ( function (Xs:Ids) { Body:Stmt } => R ) ... </k>
+       <ObjStore> OS:Map (. => R |-> Obj(.Map, FuncObj(Env, Xs, Body))) </ObjStore>
        <R> R:Ref => R +Int 1 </R>
-       <E> Env:Ref => R </E>
-
+       <E> Env:Ref</E>
+      
+  rule [E-ApplyBegin] :
+       <k> ( F:Ref(Vs:Values) => FBegin Xs ** Vs ** Body ~> FEnd) ... </k>
+       <ObjStore> (. => R |-> Obj((Xs|->Vs), _)) OS:Map ( F |-> Obj(_, FuncObj(Rs:Refs, Xs, Body))) </ObjStore>
+       <Scope> R, Rs</Scope>
+       <R> R:Ref => R +Int 1 </R>
+       
   rule [E-ApplyBindParameters] :
        <k> ( FBegin X:Id, Xs:Ids ** V:Value, Vs:Values ** Body => FBegin Xs ** Vs ** Body ) ... </k>
        <Store> S:Map (. => R |-> V) </Store>
-       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </ObjStore>
+       <Scope> Sc:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </Scope>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref </E>
-
+       
   rule FBegin .Ids ** .Values ** Body:Stmt => Body
-
+  
+  
+  //The code below has not been seen in class yet
+  
   rule [E-ApplyEnd] :
        <k> ( V:Value ~> FEnd => undefined ) ... </k>
-       <ObjStore> OS:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </ObjStore>
+       <Scope> Sc:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </Scope>
        <E> Env:Ref => ContextEnv </E>
-
+       
   rule [E-ApplyReturn] :
        <k> ( return V:RetValue ~> FEnd => V ) ... </k>
-       <ObjStore> OS:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </ObjStore>
+       <Scope> OS:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </Scope>
        <E> Env:Ref => ContextEnv </E>
-
+       
   rule return V:RetValue ; S:Stmt => return V
-
+   
   /**
    * Printing
    */
@@ -199,14 +214,14 @@ module JS
   rule [Declare]:
        <k> var (X:Id, Xs:VarExprs => Xs) ... </k>
        <Store> S:Map (. => R |-> undefined) </Store>
-       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </ObjStore>
+       <Scope> Sc:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </Scope>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref </E>
 
   rule [E-Assign]:
        <k> var (X:Id = V:Value, Xs:VarExprs => Xs) ... </k>
        <Store> S:Map (. => R |-> V) </Store>
-       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </ObjStore>
+       <Scope> Sc:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </Scope>
        <R> R:Ref => R +Int 1 </R>
        <E> Env:Ref </E>
 
@@ -215,7 +230,16 @@ module JS
   rule [E-Loc]:
        <k> ( X:Id => V ) ... </k>
        <Store> S:Map (R |-> V:Value) </Store>
-       <ObjStore> OS:Map ( Env |-> Scope(_, M:Map(X |-> R:Ref)) ) </ObjStore>
+       <Scope> Sc:Map ( Env |-> Scope(_, M:Map(X |-> R:Ref)) ) </Scope>
        <E> Env:Ref </E>
 
+  rule [E-LocChainBegin]:
+       <k> ( X:Id => X ~> env(Env) ) ... </k>
+       <Scope> Sc:Map ( Env |-> Scope(Parent:Ref, M:Map) ) </Scope>
+       <E> Env:Ref => Parent</E>
+       when notBool(X in keys(M))
+       
+  rule [E-LocChainEnd]:
+       <k> ( V:Value ~> env(Parent) =>  V) ... </k>
+       <E> Env:Ref => Parent:Ref</E>
 endmodule
