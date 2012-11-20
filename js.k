@@ -2,18 +2,19 @@ require "modules/substitution.k"
 
 module JS-SYNTAX
   syntax Ref ::= Int
-
-  syntax Func ::= "function" "(" Ids ")" "{" Stmt "}" [binder]
+  syntax Refs ::= List{Ref,","}
 
   syntax Value ::= Ref
                  | String
                  | "undefined"
                  | "null"
+  syntax Values ::= List{Value,","}          [strict]
 
-  syntax VarExpr ::= Id
-                   | Id "=" Expr             [strict(2)]
+  syntax Ids ::= List{Id,","}                [strict]
 
-  syntax VarExprs ::= List{VarExpr,","}
+  syntax Block ::= "var" Ids ";" Stmt
+
+  syntax Func ::= "function" "(" Ids ")" "{" Block "}" [binder]
 
   syntax Expr ::= "{" ObjFields "}"          [strict]
                 | Expr "[" Expr "]"          [seqstrict]
@@ -24,16 +25,11 @@ module JS-SYNTAX
                 | "print" "(" Expr ")"       [strict]
                 > "(" Expr ")"               [bracket]
                 | Value
+                | "with" "(" Expr ")" "{" Stmt "}" [strict(1)] 
 
   syntax Stmt ::= Expr
-                | "var" VarExprs
                 | "return" Expr              [strict]
                 > Stmt ";" Stmt              [strict(1), left]
-
-  syntax Ids ::= List{Id,","}                [strict]
-  syntax Values ::= List{Value,","}          [strict]
-  
-  syntax Refs ::= List{Ref,","}
 
   syntax ObjFields ::= List{ObjField,","}    [seqstrict]
   syntax ObjField ::= String ":" Expr        [strict(2)]
@@ -79,18 +75,20 @@ module JS
 
   syntax K ::= ObjMap | SetterReturn | "FEnd" Rs
   syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue 
+                   | Id "=" Value
 
   configuration <C>
                     <k> $PGM:Stmt </k>
                     <Stage> .Map </Stage>
-                    <ObjStore> .Map </ObjStore>
+                    <ObjStore> (0 |-> Obj(.Map, nofunobj)) </ObjStore>
                     <Scope> 0, .Refs </Scope>
                     <R> 1 </R>
                     <in stream="stdin"> .List </in>
                     <out stream="stdout"> .List </out>
                 </C>
 
-  rule undefined ; S:Stmt => S [structural]
+  rule [Val-Sequencing] :
+      V:Value ; S:Stmt => S
 
   /**
    * Objects
@@ -138,7 +136,7 @@ module JS
 
   rule [E-Getter] :
        <k> ( R:Ref [ Str : String ] => E) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> E:Expr ** F, _))) </ObjStore>
+       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> E:Expr ** F), _)) </ObjStore>
   
   /**
    * Setters
@@ -163,41 +161,7 @@ module JS
   /**
    * Function Application
    */
-  rule [E-FuncDefine] :
-       <k> ( function (Xs:Ids) { Body:Stmt } => R ) ... </k>
-       <ObjStore> OS:Map (. => R |-> Obj(.Map, FuncObj(Env, Xs, Body))) </ObjStore>
-       <R> R:Ref => R +Int 1 </R>
-       <E> Env:Ref</E>
-      
-  rule [E-ApplyBegin] :
-       <k> ( F:Ref(Vs:Values) => FBegin Xs ** Vs ** Body ~> FEnd) ... </k>
-       <ObjStore> (. => R |-> Obj((Xs|->Vs), _)) OS:Map ( F |-> Obj(_, FuncObj(Rs:Refs, Xs, Body))) </ObjStore>
-       <Scope> R, Rs</Scope>
-       <R> R:Ref => R +Int 1 </R>
-       
-  rule [E-ApplyBindParameters] :
-       <k> ( FBegin X:Id, Xs:Ids ** V:Value, Vs:Values ** Body => FBegin Xs ** Vs ** Body ) ... </k>
-       <Store> S:Map (. => R |-> V) </Store>
-       <Scope> Sc:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </Scope>
-       <R> R:Ref => R +Int 1 </R>
-       <E> Env:Ref </E>
-       
-  rule FBegin .Ids ** .Values ** Body:Stmt => Body
   
-  
-  //The code below has not been seen in class yet
-  
-  rule [E-ApplyEnd] :
-       <k> ( V:Value ~> FEnd => undefined ) ... </k>
-       <Scope> Sc:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </Scope>
-       <E> Env:Ref => ContextEnv </E>
-       
-  rule [E-ApplyReturn] :
-       <k> ( return V:RetValue ~> FEnd => V ) ... </k>
-       <Scope> OS:Map ( Env |-> Scope(ContextEnv:Ref, _) ) </Scope>
-       <E> Env:Ref => ContextEnv </E>
-       
-  rule return V:RetValue ; S:Stmt => return V
    
   /**
    * Printing
@@ -210,36 +174,22 @@ module JS
   /**
    * Variables
    */
+  rule [Var-Declaration] :
+      var X:Id, Rest:VarExprs => var X:Id = undefined, Rest [structural]
 
-  rule [Declare]:
-       <k> var (X:Id, Xs:VarExprs => Xs) ... </k>
-       <Store> S:Map (. => R |-> undefined) </Store>
-       <Scope> Sc:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </Scope>
-       <R> R:Ref => R +Int 1 </R>
-       <E> Env:Ref </E>
+  rule [Var-Declaration-With-Initializing] :
+      <k> (var X:Id = V:Value, Rest:VarExprs => R[Id2String(X)] = V ; var Rest) ... </k>
+      <Scope> R:Ref, _ </Scope>
 
-  rule [E-Assign]:
-       <k> var (X:Id = V:Value, Xs:VarExprs => Xs) ... </k>
-       <Store> S:Map (. => R |-> V) </Store>
-       <Scope> Sc:Map ( Env |-> Scope(_, M:Map => M[R / X]) ) </Scope>
-       <R> R:Ref => R +Int 1 </R>
-       <E> Env:Ref </E>
+  rule [Empty-Var] :
+      var .VarExprs => undefined
 
-  rule var .VarExprs => undefined [structural]
+  rule [Var-Lookup] :
+      <k> X:Id => R[Id2String(X)] ...</k>
+      <Scope> R:Ref, _ </Scope>
 
-  rule [E-Loc]:
-       <k> ( X:Id => V ) ... </k>
-       <Store> S:Map (R |-> V:Value) </Store>
-       <Scope> Sc:Map ( Env |-> Scope(_, M:Map(X |-> R:Ref)) ) </Scope>
-       <E> Env:Ref </E>
+  rule [With] :
+      <k> with (R:Ref) { Rest:Stmt } => Rest </k>
+      <Scope> Rs:Refs => R,Rs </Scope>
 
-  rule [E-LocChainBegin]:
-       <k> ( X:Id => X ~> env(Env) ) ... </k>
-       <Scope> Sc:Map ( Env |-> Scope(Parent:Ref, M:Map) ) </Scope>
-       <E> Env:Ref => Parent</E>
-       when notBool(X in keys(M))
-       
-  rule [E-LocChainEnd]:
-       <k> ( V:Value ~> env(Parent) =>  V) ... </k>
-       <E> Env:Ref => Parent:Ref</E>
 endmodule
