@@ -19,15 +19,18 @@ module JS-SYNTAX
   syntax Expr ::= "{" ObjFields "}"          [strict]
                 | Expr "[" Expr "]"          [seqstrict]
                 | Expr "[" Expr "]" "=" Expr [seqstrict]
-                | Id
+                | Id "=" Expr		     [strict(2)]
+                | Id			     [strict]
                 | Func
                 | Expr "(" Values ")"        [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
+		| Sets(Refs, String, Value)
+		| Gets(Refs, String)
                 > "(" Expr ")"               [bracket]
                 | Value
                 | "with" "(" Expr ")" "{" Stmt "}" [strict(1)] 
-
-  syntax Stmt ::= Expr
+  
+  syntax Stmt ::= Expr   		     [strict]
                 | "return" Expr              [strict]
                 > Stmt ";" Stmt              [strict(1), left]
 
@@ -73,12 +76,13 @@ module JS
   
   syntax CurEnv  ::= env(Ref)
 
-  syntax K ::= ObjMap | SetterReturn | "FEnd" Rs
+  syntax K ::= ObjMap | SetterReturn | "FEnd" Refs
+  // syntax K ::= SetterReturn | "FEnd" Refs
   syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue 
-                   | Id "=" Value
+                   // | Id "=" Value
 
   configuration <C>
-                    <k> $PGM:Stmt </k>
+                    <k> $PGM:Block </k>
                     <Stage> .Map </Stage>
                     <ObjStore> (0 |-> Obj(.Map, nofunobj)) </ObjStore>
                     <Scope> 0, .Refs </Scope>
@@ -88,11 +92,19 @@ module JS
                 </C>
 
   rule [Val-Sequencing] :
-      V:Value ; S:Stmt => S
+      V:Value ; St:Stmt => St
 
   /**
    * Objects
    */
+  rule [Gets-Got] :
+      <k> Gets((R:Ref, _), Str:String) => V ... </k>
+      <ObjStore> OS:Map(R |-> Obj(M:Map(Str |-> V:Value), _)) </ObjStore>
+
+  rule [Gets-Miss] :
+      <k> Gets((R:Ref, Rs:Refs), Str:String) => Gets(Rs, Str) ...</k>
+      <ObjStore> OS:Map(R |-> Obj(M:Map, _)) </ObjStore>
+      when notBool $hasField(M, Str)
 
   rule [Object-Intro]:
        <k> ( { O:ValObjFields } => O ~> Obj(M, nofunobj) ) ... </k>
@@ -109,7 +121,7 @@ module JS
        <R> R:Ref => R +Int 1 </R> 
 
   rule [E-GetField] :
-       <k> ( R:Ref [ Str : String ] => V) ... </k>
+       <k> ( R:Ref [ Str : String ] => V ) ... </k>
        <ObjStore> OS:Map( R |-> Obj(O:Map(Str |-> V:Value), _)) </ObjStore>
        
   rule [E-NoField] :
@@ -168,25 +180,27 @@ module JS
    */
 
   rule [Printing] :
-       <k> ( print ( V:Value ) => undefined) ... </k>
+       <k> print ( V:Value ) => undefined ... </k>
        <out> ... (. => ListItem(V)) </out>
 
   /**
    * Variables
    */
   rule [Var-Declaration] :
-      var X:Id, Rest:VarExprs => var X:Id = undefined, Rest [structural]
-
-  rule [Var-Declaration-With-Initializing] :
-      <k> (var X:Id = V:Value, Rest:VarExprs => R[Id2String(X)] = V ; var Rest) ... </k>
+      <k> var ( X:Id, Rest:Ids => Rest ) ; St:Stmt ... </k>
+      <ObjStore> OS:Map(R |-> Obj(M:Map => M[undefined / Id2String(X)], _)) </ObjStore>
       <Scope> R:Ref, _ </Scope>
 
   rule [Empty-Var] :
-      var .VarExprs => undefined
+      var .Ids ; St:Stmt => St [structural]
+
+  rule [Var-Assignment] :
+      <k> X:Id = V:Value => Sets(Rs, Id2String(X), V) ... </k>
+      <Scope> Rs:Refs </Scope>
 
   rule [Var-Lookup] :
-      <k> X:Id => R[Id2String(X)] ...</k>
-      <Scope> R:Ref, _ </Scope>
+      <k> X:Id => Gets(Rs, Id2String(X)) ... </k>
+      <Scope> Rs:Refs </Scope>
 
   rule [With] :
       <k> with (R:Ref) { Rest:Stmt } => Rest </k>

@@ -1,2 +1,3 @@
-var x = "a";
-print(x)
+var x;
+x = "a";
+print(x);
