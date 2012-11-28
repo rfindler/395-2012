@@ -1,1 +1,2 @@
-print("a")
+var x;
+print("a");

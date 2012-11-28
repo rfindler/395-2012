@@ -1,1 +1,2 @@
-var x
+var x;
+print ( x );
