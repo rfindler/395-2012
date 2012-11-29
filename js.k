@@ -2,13 +2,13 @@ require "modules/substitution.k"
 
 module JS-SYNTAX
   syntax Ref ::= Int
-  syntax Refs ::= List{Ref,","}
+  syntax Refs ::= List{Ref,","}              [strict]
 
   syntax Value ::= Ref
                  | String
                  | "undefined"
                  | "null"
-  syntax Values ::= List{Value,","}          [strict]
+  syntax Values ::= List{Value,","}          [seqstrict]
 
   syntax Ids ::= List{Id,","}                [strict]
 
@@ -24,8 +24,6 @@ module JS-SYNTAX
                 | Func
                 | Expr "(" Values ")"        [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
-		| Sets(Refs, String, Value)
-		| Gets(Refs, String)
                 > "(" Expr ")"               [bracket]
                 | Value
                 | "with" "(" Expr ")" "{" Stmt "}" [strict(1)] 
@@ -76,7 +74,9 @@ module JS
   
   syntax CurEnv  ::= env(Ref)
 
-  syntax K ::= ObjMap | SetterReturn | "FEnd" Refs
+  syntax K ::= ObjMap | SetterReturn | "FEnd" Refs | "PopScope"
+		| Sets(Refs, String, Value)
+		| Gets(Refs, String)
   // syntax K ::= SetterReturn | "FEnd" Refs
   syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue 
                    // | Id "=" Value
@@ -104,7 +104,19 @@ module JS
   rule [Gets-Miss] :
       <k> Gets((R:Ref, Rs:Refs), Str:String) => Gets(Rs, Str) ...</k>
       <ObjStore> OS:Map(R |-> Obj(M:Map, _)) </ObjStore>
-      when notBool $hasField(M, Str)
+      when notBool(Str in keys(M))
+    
+  rule [Sets-Sot] :
+       <k> Sets((R:Ref, R2:Ref, Rs:Refs), Str:String, V:Value) => V ...</k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> (_ => V)), nofunobj)) </ObjStore>
+
+  rule [Sets-Miss] :
+       <k> Sets((R:Ref, R2:Ref, Rs:Refs => R2, Rs), Str:String, V:Value) ...</k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map, _)) </ObjStore>
+      when notBool(Str in keys(M))
+
+  rule [Sets-Glo] :
+       Sets((R:Ref, .Refs), Str:String, V:Value) => R[Str] = V 
 
   rule [Object-Intro]:
        <k> ( { O:ValObjFields } => O ~> Obj(M, nofunobj) ) ... </k>
@@ -190,7 +202,7 @@ module JS
       <k> var ( X:Id, Rest:Ids => Rest ) ; St:Stmt ... </k>
       <ObjStore> OS:Map(R |-> Obj(M:Map => M[undefined / Id2String(X)], _)) </ObjStore>
       <Scope> R:Ref, _ </Scope>
-
+  
   rule [Empty-Var] :
       var .Ids ; St:Stmt => St [structural]
 
@@ -203,7 +215,11 @@ module JS
       <Scope> Rs:Refs </Scope>
 
   rule [With] :
-      <k> with (R:Ref) { Rest:Stmt } => Rest </k>
+      <k> with (R:Ref) { Rest:Stmt } => Rest ~> PopScope ... </k>
       <Scope> Rs:Refs => R,Rs </Scope>
+
+  rule [Pop-With] :
+      <k> V:Value ~> PopScope => V ... </k>
+      <Scope> _, Rs:Refs => Rs </Scope>
 
 endmodule
