@@ -54,8 +54,6 @@ module JS
   syntax MaybeFun ::= Func
                     | "nofun"
 
-  syntax SetRet(Value)
-
   syntax RetValue ::= Ref
                     | String
                     
@@ -64,10 +62,9 @@ module JS
   syntax MaybeFuncObj ::= FuncObj
                         | "nofunobj"
   
-  syntax K ::= ObjMap | SetterReturn | "FEnd" Refs | "PopScope"
+  syntax K ::= ObjMap | SetRet(Value) | "FEnd" Refs | "PopScope"
 		| Sets(Refs, String, Value)
 		| Gets(Refs, String)
-                | Print(K, Int) | "Newline"
 
   syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue 
 
@@ -207,6 +204,8 @@ module JS
   /**
    * Printing
    */
+
+  syntax K ::= Print(K, Int) | "Newline"
 
   rule [Print] :
        print(V:Value) => Print(V,5) ~> Newline
