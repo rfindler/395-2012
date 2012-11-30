@@ -1,5 +1,3 @@
-require "modules/substitution.k"
-
 module JS-SYNTAX
   syntax Ref ::= Int
   syntax Refs ::= List{Ref,","}              [strict]
@@ -20,7 +18,7 @@ module JS-SYNTAX
                 | Expr "[" Expr "]"          [seqstrict]
                 | Expr "[" Expr "]" "=" Expr [seqstrict]
                 | Id "=" Expr		     [strict(2)]
-                | Id			     [strict]
+                | Id			     
                 | Func
                 | Expr "(" Values ")"        [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
@@ -28,7 +26,7 @@ module JS-SYNTAX
                 | Value
                 | "with" "(" Expr ")" "{" Stmt "}" [strict(1)] 
   
-  syntax Stmt ::= Expr   		     [strict]
+  syntax Stmt ::= Expr   		     
                 | "return" Expr              [strict]
                 > Stmt ";" Stmt              [strict(1), left]
 
@@ -44,11 +42,6 @@ endmodule
 
 module JS
   imports JS-SYNTAX
-  imports SUBSTITUTION
-
-  syntax ScopeObj ::= Scope(Value, Map)
-
-  syntax Lambda ::= "FBegin" Ids "**" Values "**" Stmt  [strict(2)]
 
   syntax ValObjField ::= String ":" Value
                        | GetterSetter
@@ -57,12 +50,11 @@ module JS
   syntax ValObj ::= "{" ValObjFields "}"
   syntax ObjMap ::= Obj(Map, MaybeFuncObj)
 
-  // Used to map strings to <getter> ** <setter> pairs
   syntax AccessPair ::= MaybeFun "**" MaybeFun 
   syntax MaybeFun ::= Func
                     | "nofun"
 
-  syntax SetterReturn ::= SetRet(Value)
+  syntax SetRet(Value)
 
   syntax RetValue ::= Ref
                     | String
@@ -72,14 +64,12 @@ module JS
   syntax MaybeFuncObj ::= FuncObj
                         | "nofunobj"
   
-  syntax CurEnv  ::= env(Ref)
-
   syntax K ::= ObjMap | SetterReturn | "FEnd" Refs | "PopScope"
 		| Sets(Refs, String, Value)
 		| Gets(Refs, String)
-  // syntax K ::= SetterReturn | "FEnd" Refs
+                | Print(K, Int) | "Newline"
+
   syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue 
-                   // | Id "=" Value
 
   configuration <C>
                     <k> $PGM:Block </k>
@@ -188,14 +178,6 @@ module JS
   
    
   /**
-   * Printing
-   */
-
-  rule [Printing] :
-       <k> print ( V:Value ) => undefined ... </k>
-       <out> ... (. => ListItem(V)) </out>
-
-  /**
    * Variables
    */
   rule [Var-Declaration] :
@@ -221,5 +203,52 @@ module JS
   rule [Pop-With] :
       <k> V:Value ~> PopScope => V ... </k>
       <Scope> _, Rs:Refs => Rs </Scope>
+
+  /**
+   * Printing
+   */
+
+  rule [Print] :
+       print(V:Value) => Print(V,5) ~> Newline
+
+  rule [P-Newline] : 
+       <k> Newline => undefined ... </k>
+       <out> ... (. => ListItem("\n")) </out>
+
+  rule [P-undefined] :
+       <k> Print(undefined, N) => . ... </k>
+       <out> ... (. => ListItem("undefined")) </out>
+
+  rule [P-null] : 
+       <k> Print(null, N) => . ... </k>
+       <out> ... (. => ListItem("null")) </out>
+
+  rule [P-String] : 
+       <k> Print(S:String, N) => . ... </k>
+       <out> ... (. => ListItem("\"") ListItem(S) ListItem("\"")) </out>
+
+  rule [P-ObjEmpty] :
+       <k> Print (R:Ref,N) => . ... </k>
+       <ObjStore> OS:Map(R |-> Obj(.Map, _)) </ObjStore>
+       <out> ... (. => ListItem("{}")) </out>
+
+  rule [P-ObjStart] :
+       <k> Print (R:Ref,N) => Print(Val,N -Int 1) ~> Print(Obj(M,F), N -Int 1) ...</k>
+       <ObjStore> OS:Map(R |-> Obj((Id |-> Val)M:Map, F)) </ObjStore>
+       <out> ... (. => ListItem("{\"") ListItem(Id) ListItem("\":")) </out>
+       when N =/=Int 0
+
+  rule [P-ObjContinue] :
+       <k> Print(Obj((Id |-> Val)M,F), N) => Print(Val,N) ~> Print(Obj(M,F),N) ...</k>
+       <out> ... (. => ListItem(", \"") ListItem(Id) ListItem("\":")) </out>
+
+  rule [P-ObjDone] :
+       <k> Print(Obj(.Map,F), N) => . ...</k>
+       <out> ... (. => ListItem("}")) </out>
+
+  rule [P-ObjDeep] :
+       <k> Print (R:Ref,N) => . ... </k>
+       <out> ... (. => ListItem("...")) </out>
+       when N ==Int 0
 
 endmodule

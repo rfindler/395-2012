@@ -1,1 +1,1 @@
-var; with({}){y=1}; y
+var; with({}){y="one"}; print(y)

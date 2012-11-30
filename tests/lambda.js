@@ -1,1 +1,1 @@
-(function() { return "395" })()
+print((function() { return "395" })())

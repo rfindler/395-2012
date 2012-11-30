@@ -40,7 +40,7 @@
   (define prefix-reg
     (regexp (string-append 
              "^" 
-             (regexp-quote (regexp-replace #rx"imp$" (path->string name) "out"))
+             (regexp-quote (regexp-replace #rx"js$" (path->string name) "out"))
              "[^~]*$")))
   (filter
    values

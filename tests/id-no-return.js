@@ -1,1 +1,2 @@
-(function(x) { x })("a")
+print((function(x) { x })("a"))
+
