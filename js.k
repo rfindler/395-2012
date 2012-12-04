@@ -1,18 +1,19 @@
 module JS-SYNTAX
-  syntax Ref ::= Int
+  syntax Ref  ::= Int
   syntax Refs ::= List{Ref,","}              [strict]
 
   syntax Value ::= Ref
                  | String
                  | "undefined"
                  | "null"
+                 
   syntax Values ::= List{Value,","}          [seqstrict]
 
   syntax Ids ::= List{Id,","}                [strict]
 
   syntax Block ::= "var" Ids ";" Stmt
 
-  syntax Func ::= "function" "(" Ids ")" "{" Block "}" [binder]
+  syntax Func ::= "function" "(" Id ")" "{" Block "}"
 
   syntax Expr ::= "{" ObjFields "}"          [strict]
                 | Expr "[" Expr "]"          [seqstrict]
@@ -20,7 +21,7 @@ module JS-SYNTAX
                 | Id "=" Expr		     [strict(2)]
                 | Id			     
                 | Func
-                | Expr "(" Values ")"        [seqstrict, left]
+                | Expr "(" Expr ")"         [seqstrict, left]
                 | "print" "(" Expr ")"       [strict]
                 > "(" Expr ")"               [bracket]
                 | Value
@@ -31,12 +32,12 @@ module JS-SYNTAX
                 > Stmt ";" Stmt              [strict(1), left]
 
   syntax ObjFields ::= List{ObjField,","}    [seqstrict]
-  syntax ObjField ::= String ":" Expr        [strict(2)]
-                    | GetterSetter
+  syntax ObjField  ::= String ":" Expr       [strict(2)]
+                     | GetterSetter
 
   syntax GetterSetter ::= Getter | Setter
-  syntax Getter ::= "get" String "()" "{" Expr "}"         [strict(2)]
-  syntax Setter ::= "set" String "(" Id ")" "{" Expr "}"   [strict(2)]
+  syntax Getter ::= "get" String "()" "{" Block "}"         [strict(2)]
+  syntax Setter ::= "set" String "(" Id ")" "{" Block "}"   [strict(2)]
 
 endmodule
 
@@ -57,16 +58,17 @@ module JS
   syntax RetValue ::= Ref
                     | String
                     
-  syntax FuncObj ::= FuncObj(Ref, Ids, Stmt)
-  
   syntax MaybeFuncObj ::= FuncObj
                         | "nofunobj"
+
+  syntax FuncObj ::= FuncObj(Refs, Id, Block)
   
-  syntax K ::= ObjMap | SetRet(Value) | "FEnd" Refs | "PopScope"
+  syntax K ::= ObjMap | SetRet(Value) | FEnd(Refs) | "PopScope"
 		| Sets(Refs, String, Value)
 		| Gets(Refs, String)
 
   syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue 
+  	 	   | FuncObj
 
   configuration <C>
                     <k> $PGM:Block </k>
@@ -85,13 +87,13 @@ module JS
    * Objects
    */
   rule [Gets-Got] :
-      <k> Gets((R:Ref, _), Str:String) => V ... </k>
-      <ObjStore> OS:Map(R |-> Obj(M:Map(Str |-> V:Value), _)) </ObjStore>
+       <k> Gets((R:Ref, _), Str:String) => V ... </k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map(Str |-> V:Value), _)) </ObjStore>
 
   rule [Gets-Miss] :
-      <k> Gets((R:Ref, Rs:Refs), Str:String) => Gets(Rs, Str) ...</k>
-      <ObjStore> OS:Map(R |-> Obj(M:Map, _)) </ObjStore>
-      when notBool(Str in keys(M))
+       <k> Gets((R:Ref, Rs:Refs), Str:String) => Gets(Rs, Str) ...</k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map, _)) </ObjStore>
+       when notBool(Str in keys(M))
     
   rule [Sets-Sot] :
        <k> Sets((R:Ref, R2:Ref, Rs:Refs), Str:String, V:Value) => V ...</k>
@@ -100,17 +102,17 @@ module JS
   rule [Sets-Miss] :
        <k> Sets((R:Ref, R2:Ref, Rs:Refs => R2, Rs), Str:String, V:Value) ...</k>
        <ObjStore> OS:Map(R |-> Obj(M:Map, _)) </ObjStore>
-      when notBool(Str in keys(M))
+       when notBool(Str in keys(M))
 
   rule [Sets-Glo] :
        Sets((R:Ref, .Refs), Str:String, V:Value) => R[Str] = V 
 
-  rule [Object-Intro]:
+  rule [Object-Intro] :
        <k> ( { O:ValObjFields } => O ~> Obj(M, nofunobj) ) ... </k>
        <Stage> M:Map => .Map </Stage>
 
   rule [Property-Intro]:
-        <k> ( Str:String : V:Value, O:ValObjFields => O) ... </k>
+       <k> ( Str:String : V:Value, O:ValObjFields => O) ... </k>
        <Stage> M:Map => M[V / Str] </Stage> 
 
   rule [Reference-Object]:
@@ -136,70 +138,95 @@ module JS
    * Getters
    */
 
-  rule [Getter-Update]:
-       <k> (get S:String () { E:Expr }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(S |-> (F1 => E) ** F2) </Stage>
+  rule [Getter-Update] :
+       <k> (get S:String () { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(S |-> (F1 => B) ** F2) </Stage>
 
-  rule [Getter-Intro]:
-       <k> (get S:String () { E:Expr }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => S |-> E ** nofun) </Stage>
+  rule [Getter-Intro] :
+       <k> (get S:String () { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(. => S |-> B ** nofun) </Stage>
        when notBool(S in keys(M))
 
   rule [E-Getter] :
-       <k> ( R:Ref [ Str : String ] => E) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> E:Expr ** F), _)) </ObjStore>
+       <k> ( R:Ref [ Str : String ] => B) ... </k>
+       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> B:Block ** F), _)) </ObjStore>
   
   /**
    * Setters
    */
 
-  rule [Setter-Update]:
-       <k> (set S:String ( I:Id ) { E:Expr }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(S |-> F ** (F1 => ( function (I) { E } ))) </Stage>
+  rule [Setter-Update] :
+       <k> (set S:String ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(S |-> F ** (F1 => ( function (I) { B } ))) </Stage>
 
-  rule [Setter-Intro]:
-       <k> (set S:String ( I:Id ) { E:Expr }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => S |-> nofun ** ( function (I) { E } )) </Stage>
+  rule [Setter-Intro] :
+       <k> (set S:String ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(. => S |-> nofun ** ( function (I) { B } )) </Stage>
        when notBool(S in keys(M)) 
                     
   rule [E-Setter] :
        <k> ( R:Ref [Str:String] = V:Value => F(V) ~> SetRet(V)) ... </k>
        <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Func), _)) </ObjStore>
   
-  rule [Setter-Return]:
+  rule [Setter-Return] :
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
 
   /**
-   * Function Application
+   * Functions
    */
-  
+
+  // Functions are objects in js, but we need to set the MaybeFun field
+  rule [Fun-Bind] :
+       // rewrite function to a function object, binding current scope
+       <k> function (X:Id) {B:Block} => R ...</k>
+       <ObjStore> OS:Map(. => R |-> Obj(.Map, FuncObj(Rs,X,B))) </ObjStore>
+       <R> R:Ref => R +Int 1 </R>
+       <Scope> Rs:Refs </Scope>
+       
+  rule [Fun-Call] :
+       <k> ( F:Ref ( V:Value ) => B ~> FEnd( Rs ) ) ...</k>
+       <ObjStore> OS:Map
+       		  (F |-> Obj(M:Map,FuncObj(FScope:Refs,X:Id,B:Block)))
+       		  (. => R |-> Obj(Id2String(X) |-> V, nofunobj)) </ObjStore>
+       <Scope> Rs:Refs => R, FScope </Scope>
+       <R> R:Ref => R +Int 1 </R>
+
+  rule [Fun-End] :
+       <k> ( return V:Value ~> FEnd( Rs ) => V ) ...</k>
+       <Scope> R:Refs => Rs </Scope>
    
+  rule [Short-Circuit-Return] :
+       return V:Value ; S:Stmt => return V
+
+  rule [Fun-Done-No-Return] :
+       <k> (V:Value  => return undefined) ~> FEnd( _ ) ...</k>
+
   /**
    * Variables
    */
   rule [Var-Declaration] :
-      <k> var ( X:Id, Rest:Ids => Rest ) ; St:Stmt ... </k>
-      <ObjStore> OS:Map(R |-> Obj(M:Map => M[undefined / Id2String(X)], _)) </ObjStore>
-      <Scope> R:Ref, _ </Scope>
+       <k> var ( X:Id, Rest:Ids => Rest ) ; St:Stmt ... </k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map => M[undefined / Id2String(X)], _)) </ObjStore>
+       <Scope> R:Ref, _ </Scope>
   
   rule [Empty-Var] :
-      var .Ids ; St:Stmt => St [structural]
+       var .Ids ; St:Stmt => St [structural]
 
   rule [Var-Assignment] :
-      <k> X:Id = V:Value => Sets(Rs, Id2String(X), V) ... </k>
-      <Scope> Rs:Refs </Scope>
+       <k> X:Id = V:Value => Sets(Rs, Id2String(X), V) ... </k>
+       <Scope> Rs:Refs </Scope>
 
   rule [Var-Lookup] :
-      <k> X:Id => Gets(Rs, Id2String(X)) ... </k>
-      <Scope> Rs:Refs </Scope>
+       <k> X:Id => Gets(Rs, Id2String(X)) ... </k>
+       <Scope> Rs:Refs </Scope>
 
   rule [With] :
-      <k> with (R:Ref) { Rest:Stmt } => Rest ~> PopScope ... </k>
-      <Scope> Rs:Refs => R,Rs </Scope>
+       <k> with (R:Ref) { Rest:Stmt } => Rest ~> PopScope ... </k>
+       <Scope> Rs:Refs => R,Rs </Scope>
 
   rule [Pop-With] :
-      <k> V:Value ~> PopScope => V ... </k>
-      <Scope> _, Rs:Refs => Rs </Scope>
+       <k> V:Value ~> PopScope => V ... </k>
+       <Scope> _, Rs:Refs => Rs </Scope>
 
   /**
    * Printing
