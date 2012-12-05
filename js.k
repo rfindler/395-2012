@@ -57,7 +57,7 @@ module JS
   
   syntax AccessPair ::= MaybeFuncObj "**" MaybeFuncObj
 
-  syntax K ::= ObjMap | SetRet(Value) | FEnd(Refs) | "PopScope"
+  syntax K ::= ObjMap | FEnd(Refs) | "PopScope"
 		| Sets(Refs, String, Value)
 		| Gets(Refs, String)
 
@@ -126,54 +126,57 @@ module JS
        <ObjStore> OS:Map( R |-> Obj(O, _)) </ObjStore>
        when notBool(Str in keys(O))
 
-  rule [E-SetField] :
+  rule [E-SetField-Update] :
        <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map => M[V / Str], _)) </ObjStore>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> (V2:Value => V)),_)) </ObjStore>
 
+  rule [E-SetField-Create] :
+       <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (. => Str |-> V), _)) </ObjStore>
+       when notBool(Str in keys(M))
 
   /**
    * Getters
    */
 
-/*
   rule [Getter-Update] :
        <k> (get X:Id () { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(Id2String(X) |-> (F1 => FuncObj(Rs, .Ids, B)) ** F2) </Stage>
+       <Stage> M:Map(XX |-> (F1 => FuncObj(Rs, .Ids, B)) ** F2) </Stage>
        <Scope> Rs:Refs </Scope>
+       when XX ==String Id2String(X)
 
   rule [Getter-Intro] :
        <k> (get X:Id () { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => Id2String(X) |-> FuncObj(Rs,.Ids,B) ** nofun) </Stage>
+       <Stage> M:Map(. => Id2String(X) |-> (FuncObj(Rs,.Ids,B) ** nofunobj))</Stage>
        <Scope> Rs </Scope>
        when notBool(Id2String(X) in keys(M))
 
   rule [E-Getter] :
-       <k> ( R:Ref [ Str : String ] => B) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> B:Block ** F), _)) </ObjStore>
-*/
+       <k> ( R:Ref [ Str : String ] => G(.Values)) ... </k>
+       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> G ** F), _)) </ObjStore>
   
   /**
    * Setters
    */
 
-/*
   rule [Setter-Update] :
-       <k> (set S:Id ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(Id2String(S) |-> F ** (F1 => ( function (I) { B } ))) </Stage>
+       <k> (set S:Id ( X:Id ) { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(SS |-> F ** (F1 => FuncObj(Rs,(X,.Ids),B))) </Stage>
+       <Scope> Rs </Scope>
+       when SS ==String Id2String(S)
 
   rule [Setter-Intro] :
        <k> (set S:Id ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => Id2String(S) |-> nofun ** ( function (I) { B } )) </Stage>
+       <Stage> M:Map(. => Id2String(S) |-> FuncObj(.Refs,.Ids,var .Ids; return undefined)
+                     ** FuncObj(Rs,(I,.Ids),B)) </Stage>
+       <Scope> Rs </Scope>
        when notBool(Id2String(S) in keys(M)) 
                     
   rule [E-Setter] :
-       <k> ( R:Ref [Str:String] = V:Value => F(V) ~> SetRet(V)) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F:Func), _)) </ObjStore>
+       <k> R:Ref [Str:String] = V:Value => 
+           (FuncObj(.Refs,(String2Id("x"),.Ids), var .Ids ; return V)(F(V))) ... </k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F), _)) </ObjStore>
   
-  rule [Setter-Return] :
-       <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
-*/
-
   /**
    * Functions
    */

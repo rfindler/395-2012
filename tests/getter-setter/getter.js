@@ -1,4 +1,2 @@
 var x;
-print({ get "x" () { "395" } }["x"])
-
-
+print({ get x() { var y; "395" } }["x"])
