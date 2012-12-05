@@ -5,14 +5,20 @@
 (define num-workers (processor-count))
 (define do-search? #t)
 
-(command-line
- #:once-each
- [("-n" "--no-search") "do not enumerate all possibilities" (set! do-search? #f)]
- [("-j") num "number of parallel workers" 
-         (begin
-           (unless (string->number num)
-             (raise-user-error 'run-tests.rkt "expected a number, got ~a" num))
-           (set! num-workers (string->number num)))])
+(define files
+  (command-line
+   #:once-each
+   [("-n" "--no-search") "do not enumerate all possibilities" (set! do-search? #f)]
+   [("-j") num "number of parallel workers" 
+           (begin
+             (unless (string->number num)
+               (raise-user-error 'run-tests.rkt "expected a number, got ~a" num))
+             (set! num-workers (string->number num)))]
+   #:args args (map string->path args)))
+
+(when (null? files) 
+  (set! files (for/list ([file (in-directory tests)]) 
+                file)))
 
 (define krun 
   (or (find-executable-path "krun")
@@ -24,7 +30,7 @@
   (define test-threads
     (filter
      thread?
-     (for/list ([file (in-directory tests)])
+     (for/list ([file (in-list files)])
        (when (regexp-match #rx"[.]js$" (path->string file))
          (define out-files (find-out-files file))
          (cond
@@ -78,31 +84,39 @@
               (channel-put resp-chan
                            (list (not didnt-timeout)
                                  (if do-search?
-                                     (parse-io (get-output-string outp))
+                                     (parse-io (get-output-string outp) in-file out-file)
                                      (get-output-string outp))
                                  (get-output-string errp)))
               (loop)]))
           (handle-evt die-chan void)))))
     die-chan))
-             
-(define (parse-io str)
+
+(define (parse-io str [in-file #f] [out-file #f])
   (define sp (open-input-string str))
   (let loop ()
     (define next (regexp-match #rx"\nSolution [0-9]+, state [0-9]+:\n" sp))
     (cond
       [(not next) '()]
+      [(regexp-match "<out>\n *#buffer[(] *[(][.][)]" (peeking-input-port sp))
+       ;; no output, so count that as the empty string
+       (cons "" (loop))]
       [else
        (define m (regexp-match #rx"<out>\n *#buffer[(] *\"" sp))
-       (define output (parse-to-close-quote sp))
+       (define mp (peeking-input-port mp))
+       (define output (parse-to-close-quote sp str in-file out-file))
        (cons output (loop))])))
 
-(define (parse-to-close-quote sp)
+(define (parse-to-close-quote sp str in-file out-file)
   (apply
    string
    (let loop ([escaping? #f])
      (define c (read-char sp))
      (cond
-       [(eof-object? c) (error 'parse-io "found eof in the middle of the buffer")]
+       [(eof-object? c) 
+        (error 'parse-io 
+               "found eof in the middle of the buffer; str was ~s in-file was ~s out-file was ~s"
+               str
+               in-file out-file)]
        [else
         (define the-char
           (if escaping?
@@ -123,13 +137,9 @@
           [else
            (cons the-char (loop #f))])]))))
 
-
-
-;; you may have to comment out the submodule if you're using an older version of Racket
-#;
 (module+ test
   (require rackunit)
-  (check-equal? (parse-to-close-quote (open-input-string "1 1 2 3 5 8 13 21\\n\""))
+  (check-equal? (parse-to-close-quote (open-input-string "1 1 2 3 5 8 13 21\\n\"") "" #f #f)
                 "1 1 2 3 5 8 13 21\n")
   (check-equal?
    (parse-io
@@ -141,14 +151,18 @@
      "  </out> \n  <threads>\n   .\n  </threads> \n"
      "  <store>   \n    0 |-> 21\n    1 |-> 34\n    2 |-> 1\n  </store> \n"
      "</C>\n"))
-   '("1 1 2 3 5 8 13 21\n")))
-
+   '("1 1 2 3 5 8 13 21\n"))
+  
+  (check-equal?
+   (parse-io
+    "Search results:\n\nSolution 1, state 0:\n<C> \n  <k>\n   1 \n  </k> \n  <R>\n   2 \n  </R> \n  <Scope>\n    0  , (.List{\",\"}) \n  </Scope> \n  <in>\n   #buffer( \"\\n\"  )\n  </in> \n  <out>\n   #buffer( (.) )\n  </out> \n  <ObjStore>   \n    0  |-> Obj(Map2KLabel \n       \"f\"  |-> 1 \n       \"g\"  |-> undefined, nofunobj)\n    1  |-> Obj(Map2KLabel ., FuncObj(0  , (.List{\",\"}), x, var (.List{\",\"}) ; (return x  )))\n  </ObjStore> \n  <Stage>\n   .\n  </Stage> \n</C>\n")
+   '("")))
 
 (define (catch-results/io thds)
   (let loop ([thds thds])
     (cond
       [(null? thds) 
-       (printf "~a tests run\n" num-tests)]
+       (printf "~a test~a run\n" num-tests (if (= 1 num-tests) "" "s"))]
       [else
        (apply
         sync
@@ -161,7 +175,7 @@
         (map (λ (thd)
                (handle-evt thd (λ (_) (loop (remq thd thds)))))
              thds))])))
-    
+
 (define (run-a-test in-file out-files)
   (thread
    (λ ()
@@ -206,5 +220,5 @@
           (printf "~a failed\n       got ~s\n" in-file stdout)
           (for ([result (in-list result-candidates)])
             (printf "  expected ~s\n" result)))])]))
-  
+
 (main)

@@ -8,8 +8,8 @@ f = function(x) {
         "q": "4"
     };
     with (newObject) {
-        q = "3";
-    }
-    return q;
-}
-f(395);
+        q = "3"
+    };
+    return q
+};
+print(f(395))

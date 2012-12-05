@@ -1,23 +1,23 @@
-(function() {
-    var firstObject = {
-        "a": 1,
-        "b": 2,
-        "c": 3,
-        "q": 4
+var;
+print((function(ignored) {
+    var f, g, firstObject;
+    firstObject = {
+        "a": "1",
+        "b": "2",
+        "c": "3",
+        "q": "4"
     };
-    var f;
     with (firstObject) {
         f = function(x) {
-            q = x;
+            var; q = x
         }
     };
-    firstObject.q = 17;
-    var g;
+    firstObject["q"] = 17;
     with (firstObject) {
         g = function(x) {
-            return q;
+            var; return q
         }
-    }
-    f(395);
-    return g(2);
-})()
+    };
+    f("395");
+    return g("2")
+})("ignored"))

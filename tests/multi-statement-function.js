@@ -1,5 +1,7 @@
+var;
 print((function(x) {
-  var y = "five";
-  return y;
-  var z = x
+    var y,z;
+    y = "five";
+    return y;
+    z = x
 })("a"))

@@ -1,2 +1,2 @@
-print((function(x) { x })("a"))
+var; print((function(x) { var; x })("a"))
 
