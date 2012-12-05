@@ -1,74 +1,70 @@
 module JS-SYNTAX
-  syntax Ref  ::= Int
-  syntax Refs ::= List{Ref,","}              [strict]
+  syntax Block ::= "var" Ids ";" Stmt
 
+  syntax Stmt ::= Expr   		     
+                | "return" Expr                        [strict]
+                > Stmt ";" Stmt                        [strict(1), left]
+
+  syntax Expr ::= "{" ObjFields "}"                    [strict]
+                | Expr "[" Expr "]"                    [seqstrict]
+                | Expr "[" Expr "]" "=" Expr           [seqstrict]
+                | Id "=" Expr		               [strict(2)]
+                | Id			     
+                | "function" "(" Ids ")" "{" Block "}"
+                | Expr "(" Exprs ")"                   [seqstrict, left]
+                | "print" "(" Expr ")"                 [strict]
+                > "(" Expr ")"                         [bracket]
+                | Value
+                | "with" "(" Expr ")" "{" Stmt "}"     [strict(1)] 
+  syntax Exprs ::= List{Expr,","}                      [seqstrict]
+  
   syntax Value ::= Ref
                  | String
                  | "undefined"
                  | "null"
-                 
-  syntax Values ::= List{Value,","}          [seqstrict]
+  syntax Values ::= List{Value,","}
 
-  syntax Ids ::= List{Id,","}                [strict]
+  syntax Ref  ::= Int
+  syntax Refs ::= List{Ref,","}
 
-  syntax Block ::= "var" Ids ";" Stmt
+  syntax Ids ::= List{Id,","}
 
-  syntax Func ::= "function" "(" Id ")" "{" Block "}"
+  syntax ObjFields ::= List{ObjField,","}              [seqstrict]
+  syntax ObjField  ::= String ":" Expr                 [strict(2)]
+                     | Getter
+                     | Setter
 
-  syntax Expr ::= "{" ObjFields "}"          [strict]
-                | Expr "[" Expr "]"          [seqstrict]
-                | Expr "[" Expr "]" "=" Expr [seqstrict]
-                | Id "=" Expr		     [strict(2)]
-                | Id			     
-                | Func
-                | Expr "(" Expr ")"         [seqstrict, left]
-                | "print" "(" Expr ")"       [strict]
-                > "(" Expr ")"               [bracket]
-                | Value
-                | "with" "(" Expr ")" "{" Stmt "}" [strict(1)] 
-  
-  syntax Stmt ::= Expr   		     
-                | "return" Expr              [strict]
-                > Stmt ";" Stmt              [strict(1), left]
-
-  syntax ObjFields ::= List{ObjField,","}    [seqstrict]
-  syntax ObjField  ::= String ":" Expr       [strict(2)]
-                     | GetterSetter
-
-  syntax GetterSetter ::= Getter | Setter
-  syntax Getter ::= "get" String "()" "{" Block "}"         [strict(2)]
-  syntax Setter ::= "set" String "(" Id ")" "{" Block "}"   [strict(2)]
+  syntax Getter ::= "get" Id "(" ")" "{" Block "}"
+  syntax Setter ::= "set" Id "(" Id ")" "{" Block "}"
 
 endmodule
 
 module JS
   imports JS-SYNTAX
 
-  syntax ValObjField ::= String ":" Value
-                       | GetterSetter
-                 
+  syntax ValObjField ::= Getter
+                       | Setter
+  rule isValObjField('_:_(K1:String,,K2:Value)) => true 
+
   syntax ValObjFields ::= List{ValObjField,","}
   syntax ValObj ::= "{" ValObjFields "}"
   syntax ObjMap ::= Obj(Map, MaybeFuncObj)
 
-  syntax AccessPair ::= MaybeFun "**" MaybeFun 
-  syntax MaybeFun ::= Func
-                    | "nofun"
-
-  syntax RetValue ::= Ref
-                    | String
-                    
   syntax MaybeFuncObj ::= FuncObj
                         | "nofunobj"
 
-  syntax FuncObj ::= FuncObj(Refs, Id, Block)
+  syntax FuncObj ::= FuncObj(Refs, Ids, Block)
   
+  syntax AccessPair ::= MaybeFuncObj "**" MaybeFuncObj
+
   syntax K ::= ObjMap | SetRet(Value) | FEnd(Refs) | "PopScope"
 		| Sets(Refs, String, Value)
 		| Gets(Refs, String)
 
-  syntax KResult ::= Value | ValObjField | RetValue | "return" RetValue 
-  	 	   | FuncObj
+  syntax KResult ::= Value | ValObjField | FuncObj 
+  rule isKResult(return _:Value) => true
+
+  syntax Expr ::= FuncObj
 
   configuration <C>
                     <k> $PGM:Block </k>
@@ -134,35 +130,41 @@ module JS
        <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
        <ObjStore> OS:Map(R |-> Obj(M:Map => M[V / Str], _)) </ObjStore>
 
+
   /**
    * Getters
    */
 
+/*
   rule [Getter-Update] :
-       <k> (get S:String () { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(S |-> (F1 => B) ** F2) </Stage>
+       <k> (get X:Id () { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(Id2String(X) |-> (F1 => FuncObj(Rs, .Ids, B)) ** F2) </Stage>
+       <Scope> Rs:Refs </Scope>
 
   rule [Getter-Intro] :
-       <k> (get S:String () { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => S |-> B ** nofun) </Stage>
-       when notBool(S in keys(M))
+       <k> (get X:Id () { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(. => Id2String(X) |-> FuncObj(Rs,.Ids,B) ** nofun) </Stage>
+       <Scope> Rs </Scope>
+       when notBool(Id2String(X) in keys(M))
 
   rule [E-Getter] :
        <k> ( R:Ref [ Str : String ] => B) ... </k>
        <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> B:Block ** F), _)) </ObjStore>
+*/
   
   /**
    * Setters
    */
 
+/*
   rule [Setter-Update] :
-       <k> (set S:String ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(S |-> F ** (F1 => ( function (I) { B } ))) </Stage>
+       <k> (set S:Id ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(Id2String(S) |-> F ** (F1 => ( function (I) { B } ))) </Stage>
 
   rule [Setter-Intro] :
-       <k> (set S:String ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => S |-> nofun ** ( function (I) { B } )) </Stage>
-       when notBool(S in keys(M)) 
+       <k> (set S:Id ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
+       <Stage> M:Map(. => Id2String(S) |-> nofun ** ( function (I) { B } )) </Stage>
+       when notBool(Id2String(S) in keys(M)) 
                     
   rule [E-Setter] :
        <k> ( R:Ref [Str:String] = V:Value => F(V) ~> SetRet(V)) ... </k>
@@ -170,25 +172,30 @@ module JS
   
   rule [Setter-Return] :
        <k> (V:Value ~> SetRet(V2:Value) => V2) ... </k>
+*/
 
   /**
    * Functions
    */
 
-  // Functions are objects in js, but we need to set the MaybeFun field
-  rule [Fun-Bind] :
-       // rewrite function to a function object, binding current scope
-       <k> function (X:Id) {B:Block} => R ...</k>
-       <ObjStore> OS:Map(. => R |-> Obj(.Map, FuncObj(Rs,X,B))) </ObjStore>
+  rule [Fun-Alloc] :
+       <k> function (Xs:Ids) {B:Block} => R ...</k>
+       <ObjStore> OS:Map(. => R |-> Obj(.Map, FuncObj(Rs,Xs,B))) </ObjStore>
        <R> R:Ref => R +Int 1 </R>
        <Scope> Rs:Refs </Scope>
        
-  rule [Fun-Call] :
-       <k> ( F:Ref ( V:Value ) => B ~> FEnd( Rs ) ) ...</k>
-       <ObjStore> OS:Map
-       		  (F |-> Obj(M:Map,FuncObj(FScope:Refs,X:Id,B:Block)))
-       		  (. => R |-> Obj(Id2String(X) |-> V, nofunobj)) </ObjStore>
-       <Scope> Rs:Refs => R, FScope </Scope>
+  rule [Fun-Lookup] : 
+       <k>( (F:Ref => FuncObj(Env,Xs,B)) ( Vs:Values ))  ...</k>
+       <ObjStore> OS:Map(F |-> Obj(M:Map,FuncObj(Env:Refs,Xs:Ids,B:Block)))</ObjStore>
+
+  rule [Fun-Call-Some-Args] :
+       <k> FuncObj(Env:Refs,(X:Id, Xs:Ids),(var Ys:Ids; S:Stmt)) ( V:Value, Vs:Values ) => 
+           FuncObj(Env:Refs,Xs,(var X,Ys; X=V; S)) ( Vs ) ... </k>
+
+  rule [Fun-Call-No-Args] :
+       <k> (FuncObj(E:Refs,.Ids,B:Block) ( .Exprs )) => B ~> FEnd(Rs) ... </k>
+       <ObjStore> OS:Map(. => R |-> Obj(.Map, nofunobj)) </ObjStore>
+       <Scope> Rs:Refs => R, E </Scope>
        <R> R:Ref => R +Int 1 </R>
 
   rule [Fun-End] :
@@ -199,7 +206,7 @@ module JS
        return V:Value ; S:Stmt => return V
 
   rule [Fun-Done-No-Return] :
-       <k> (V:Value  => return undefined) ~> FEnd( _ ) ...</k>
+       <k> (V:Value => return undefined) ~> FEnd( Rs ) ...</k>
 
   /**
    * Variables

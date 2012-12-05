@@ -1,2 +1,2 @@
 var ; 
-{get "x" () { Print("5")} , set "x" (y) { Print(y)}}["x"] = 10
+{get x() { var; print("5")} , set x(y) { var ; print(y)}}["x"] = "10"

@@ -1,3 +1,4 @@
+var;
 print((function(x, y) {
-  return y
+    var; return y
 })("a", "b"))
