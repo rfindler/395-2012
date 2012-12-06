@@ -16,12 +16,14 @@ module JS-SYNTAX
                 > "(" Expr ")"                         [bracket]
                 | Value
                 | "with" "(" Expr ")" "{" Stmt "}"     [strict(1)] 
+
   syntax Exprs ::= List{Expr,","}                      [seqstrict]
   
   syntax Value ::= Ref
                  | String
                  | "undefined"
                  | "null"
+
   syntax Values ::= List{Value,","}
 
   syntax Ref  ::= Int
@@ -68,7 +70,7 @@ module JS
 
   configuration <C>
                     <k> $PGM:Block </k>
-                    <Stage> .Map </Stage>
+                    //<Stage> .Map </Stage>
                     <ObjStore> (0 |-> Obj(.Map, nofunobj)) </ObjStore>
                     <Scope> 0, .Refs </Scope>
                     <R> 1 </R>
@@ -82,6 +84,7 @@ module JS
   /**
    * Objects
    */
+  // Scope Object Manipulation
   rule [Gets-Got] :
        <k> Gets((R:Ref, _), Str:String) => V ... </k>
        <ObjStore> OS:Map(R |-> Obj(M:Map(Str |-> V:Value), _)) </ObjStore>
@@ -103,20 +106,20 @@ module JS
   rule [Sets-Glo] :
        Sets((R:Ref, .Refs), Str:String, V:Value) => R[Str] = V 
 
+  // Object Construction
   rule [Object-Intro] :
-       <k> ( { O:ValObjFields } => O ~> Obj(M, nofunobj) ) ... </k>
-       <Stage> M:Map => .Map </Stage>
-
-  rule [Property-Intro]:
-       <k> ( Str:String : V:Value, O:ValObjFields => O) ... </k>
-       <Stage> M:Map => M[V / Str] </Stage> 
-
-  rule [Reference-Object]:
-       <k> ( .ValObjFields ~> Obj(Old:Map, nofunobj) => R ) ... </k>
-       <Stage> M:Map => Old </Stage>
-       <ObjStore> OS:Map(. => R |-> Obj(M, nofunobj) ) </ObjStore>
+       <k> ( { O:ValObjFields } => O ~> R ) ... </k>
+       <ObjStore> OS:Map(. => R |-> Obj(.Map, nofunobj)) </ObjStore>
        <R> R:Ref => R +Int 1 </R> 
 
+  rule [Property-Intro] :
+       <k> ( Str:String : V:Value, O:ValObjFields ~> R  => O ~> R ) ... </k>
+       <ObjStore> OS:Map(R |-> Obj((M => M[V / Str]), _)) </ObjStore>
+
+  rule [Reference-Object]:
+       .ValObjFields ~> R => R
+
+  // Object Reference
   rule [E-GetField] :
        <k> ( R:Ref [ Str : String ] => V ) ... </k>
        <ObjStore> OS:Map( R |-> Obj(O:Map(Str |-> V:Value), _)) </ObjStore>
@@ -140,15 +143,14 @@ module JS
    */
 
   rule [Getter-Update] :
-       <k> (get X:Id () { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(XX |-> (F1 => FuncObj(Rs, .Ids, B)) ** F2) </Stage>
+       <k> (get X:Id () { B:Block }, O:ValObjFields ~> R => O ~> R) ... </k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (Id2String(X) |-> ((_ => FuncObj(Rs, .Ids, B)) ** _)), _)) </ObjStore>
        <Scope> Rs:Refs </Scope>
-       when XX ==String Id2String(X)
 
   rule [Getter-Intro] :
-       <k> (get X:Id () { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => Id2String(X) |-> (FuncObj(Rs,.Ids,B) ** nofunobj))</Stage>
-       <Scope> Rs </Scope>
+       <k> (get X:Id () { B:Block }, O:ValObjFields ~> R => O ~> R) ... </k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (. => Id2String(X) |-> (FuncObj(Rs,.Ids,B) ** nofunobj)), _)) </ObjStore>
+       <Scope> Rs:Refs </Scope>
        when notBool(Id2String(X) in keys(M))
 
   rule [E-Getter] :
@@ -160,15 +162,14 @@ module JS
    */
 
   rule [Setter-Update] :
-       <k> (set S:Id ( X:Id ) { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(SS |-> F ** (F1 => FuncObj(Rs,(X,.Ids),B))) </Stage>
+       <k> (set X:Id ( Y:Id ) { B:Block }, O:ValObjFields => O) ... </k>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (Id2String(S) |-> (_ ** (_ => FuncObj(Rs,(Y,.Ids), B)))), _)) </ObjStore>
        <Scope> Rs </Scope>
-       when SS ==String Id2String(S)
 
   rule [Setter-Intro] :
        <k> (set S:Id ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
-       <Stage> M:Map(. => Id2String(S) |-> FuncObj(.Refs,.Ids,var .Ids; return undefined)
-                     ** FuncObj(Rs,(I,.Ids),B)) </Stage>
+       <ObjStore> OS:Map(R |-> Obj(M:Map (. => Id2String(S) |-> FuncObj(.Refs,.Ids,var .Ids; return undefined)
+                                               ** FuncObj(Rs,(I,.Ids),B)), _)) </ObjStore>
        <Scope> Rs </Scope>
        when notBool(Id2String(S) in keys(M)) 
                     
