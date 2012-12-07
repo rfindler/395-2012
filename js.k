@@ -1,4 +1,36 @@
+/*@
+
+Functions, Variables, and With in JavaScript
+
+by Lee Fan
+Burke Allen Fetscher,
+John Morgan Greene,
+Dylan A Hirshkowitz, 
+Daniel Joseph Lieberman,
+Josiah William Matlack,
+Ethan James Romba,
+Maciej Swiech,
+Matthew Pierce Wampler-Doty,
+Kaicheng Zhang, and
+Robby Findler
+
+
+
+This is a model of functions and variables and \texttt{with} in
+JavaScript.  It demonstrates how scope objects work (assuming that var
+declarations have already been lifted to the nearest enclosing scope
+or the top of the program), showing \texttt{with} in its full
+glory. It includes a simplified version of objects (with normal fields
+and getter/setter pairs but not prototypes or other features of
+JavaScript's objects) --- just enough to be able to explain scope
+objects.
+
+Note that values in the language include only strings and objects:
+numbers are not JavaScript values but references to objects in
+the store. */
+
 module JS-SYNTAX
+
   syntax Block ::= "var" Ids ";" Stmt
 
   syntax Stmt ::= Expr   		     
@@ -49,7 +81,6 @@ module JS
   rule isValObjField('_:_(K1:String,,K2:Value)) => true 
 
   syntax ValObjFields ::= List{ValObjField,","}
-  syntax ValObj ::= "{" ValObjFields "}"
 
   syntax MaybeFuncObj ::= FuncObj
                         | "nofunobj"
@@ -120,7 +151,7 @@ module JS
        .ValObjFields ~> R => R
 
 /*@
-\section{Object Reference}
+\section{Field Access and Mutation}
 */
 
   rule [E-GetField] :
@@ -162,7 +193,7 @@ module JS
        <Scope> R:Ref, _ </Scope>
   
   rule [Empty-Var] :
-       var .Ids ; St:Stmt => St [structural]
+       <k> var .Ids ; St:Stmt => St ... </k> [structural]
 
   rule [Var-Assignment] :
        <k> X:Id = V:Value => Sets(Rs, Id2String(X), V) ... </k>
@@ -206,7 +237,7 @@ module JS
        when notBool(Str in keys(M))
 
   rule [Sets-Glo] :
-       Sets((R:Ref, .Refs), Str:String, V:Value) => R[Str] = V 
+       <k> Sets((R:Ref, .Refs), Str:String, V:Value) => R[Str] = V  ... </k>
 
 /*@
 \section{Functions}
@@ -239,7 +270,7 @@ module JS
        <Scope> R:Refs => Rs </Scope>
    
   rule [Short-Circuit-Return] :
-       return V:Value ; S:Stmt => return V
+       <k> return V:Value ; S:Stmt => return V ... </k>
 
   rule [Fun-Done-No-Return] :
        <k> (V:Value => return undefined) ~> FEnd( Rs ) ...</k>
@@ -248,49 +279,60 @@ module JS
 \section{Printing}
 */
 
-  syntax K ::= Print(K, Int) | "Newline"
+  syntax K ::= Print(K, Int) | PrintFields(K, Map, Int) | Dump(String)
 
   rule [Print] :
-       print(V:Value) => Print(V,5) ~> Newline
+       <k> print(V:Value) => Print(V,5) ~> Dump("\n") ~> undefined ... </k>
 
-  rule [P-Newline] : 
-       <k> Newline => undefined ... </k>
-       <out> ... (. => ListItem("\n")) </out>
+  rule [P-Dump] : 
+       <k> Dump(Str) => . ... </k>
+       <out> ... (. => ListItem(Str)) </out>
 
   rule [P-undefined] :
-       <k> Print(undefined, N) => . ... </k>
-       <out> ... (. => ListItem("undefined")) </out>
+       <k> Print(undefined, N) => Dump("undefined") ... </k>
 
   rule [P-null] : 
-       <k> Print(null, N) => . ... </k>
-       <out> ... (. => ListItem("null")) </out>
+       <k> Print(null, N) => Dump("null") ... </k>
 
   rule [P-String] : 
-       <k> Print(S:String, N) => . ... </k>
-       <out> ... (. => ListItem("\"") ListItem(S) ListItem("\"")) </out>
+       <k> Print(S:String, N) => Dump("\"") ~> Dump(S) ~> Dump("\"") ... </k>
 
   rule [P-ObjEmpty] :
-       <k> Print (R:Ref,N) => . ... </k>
+       <k> Print (R:Ref,N) => Dump("{}") ... </k>
        <Store> OS:Map(R |-> Obj(.Map, _)) </Store>
-       <out> ... (. => ListItem("{}")) </out>
+       when N =/=Int 0
 
   rule [P-ObjStart] :
-       <k> Print (R:Ref,N) => Print(Val,N -Int 1) ~> Print(Obj(M,F), N -Int 1) ...</k>
-       <Store> OS:Map(R |-> Obj((Id |-> Val)M:Map, F)) </Store>
-       <out> ... (. => ListItem("{\"") ListItem(Id) ListItem("\":")) </out>
+       <k> Print (R:Ref,N) => 
+           Dump("{") ~> PrintFields(sortStrings(keys(M)),M,N -Int 1) ... </k>
+       <Store> OS:Map(R |-> Obj(M:Map, F)) </Store>
        when N =/=Int 0
 
   rule [P-ObjContinue] :
-       <k> Print(Obj((Id |-> Val)M,F), N) => Print(Val,N) ~> Print(Obj(M,F),N) ...</k>
-       <out> ... (. => ListItem(", \"") ListItem(Id) ListItem("\":")) </out>
+       <k> PrintFields(S1 +_+ S2 +_+ Rs,M(S1 |-> Val),N) => 
+           Dump("\"") ~> Dump(S1) ~> Dump("\":") ~> Print(Val,N)
+           ~> Dump(", ") ~> PrintFields(S2 +_+ Rs,M,N) ... </k>
 
   rule [P-ObjDone] :
-       <k> Print(Obj(.Map,F), N) => . ...</k>
-       <out> ... (. => ListItem("}")) </out>
+       <k> PrintFields(S1 +_+ .Strings,S1 |-> Val,N) => 
+           Dump("\"") ~> Dump(S1) ~> Dump("\":") ~> Print(Val,N) ~> Dump("}")  ...</k>
 
   rule [P-ObjDeep] :
-       <k> Print (R:Ref,N) => . ... </k>
-       <out> ... (. => ListItem("...")) </out>
+       <k> Print (R:Ref,N) => Dump("...") ... </k>
        when N ==Int 0
+
+/*@
+\section{Sorting}
+*/
+  syntax Strings ::= List{String,"+_+"} | sortStrings(Set) | insertString(String,Strings)
+  rule sortStrings(SetItem(S1) R:Set) =>
+       insertString(S1 , sortStrings(R))             [anywhere]
+  rule sortStrings(.Set) => .Strings                 [anywhere]
+
+  rule insertString(S1,.Strings) => S1 +_+ .Strings  [anywhere]
+  rule insertString(S1,(S2 +_+ Rs)) => S1 +_+ (S2 +_+ Rs)
+       when S1 <String S2                            [anywhere]
+  rule insertString(S1,(S2 +_+ Rs)) => S2 +_+ insertString(S1,Rs)
+       when S2 <=String S1                           [anywhere]
 
 endmodule
