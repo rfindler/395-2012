@@ -50,7 +50,6 @@ module JS
 
   syntax ValObjFields ::= List{ValObjField,","}
   syntax ValObj ::= "{" ValObjFields "}"
-  syntax ObjMap ::= Obj(Map, MaybeFuncObj)
 
   syntax MaybeFuncObj ::= FuncObj
                         | "nofunobj"
@@ -59,165 +58,107 @@ module JS
   
   syntax AccessPair ::= MaybeFuncObj "**" MaybeFuncObj
 
-  syntax K ::= ObjMap | FEnd(Refs) | "PopScope"
-		| Sets(Refs, String, Value)
-		| Gets(Refs, String)
+  syntax K ::= Obj(Map, MaybeFuncObj)
 
   syntax KResult ::= Value | ValObjField | FuncObj 
   rule isKResult(return _:Value) => true
 
   syntax Expr ::= FuncObj
 
-  configuration <C>
-                    <k> $PGM:Block </k>
-                    //<Stage> .Map </Stage>
-                    <ObjStore> (0 |-> Obj(.Map, nofunobj)) </ObjStore>
-                    <Scope> 0, .Refs </Scope>
-                    <R> 1 </R>
-                    <in stream="stdin"> .List </in>
-                    <out stream="stdout"> .List </out>
+  configuration <C> <k color="green"> $PGM:Block </k>
+                    <Store color="orange"> (0 |-> Obj(.Map, nofunobj)) </Store>
+                    <Scope color="blue"> 0, .Refs </Scope>
+                    <R color="red"> 1 </R>
+                    <out stream="stdout" color="black"> .List </out>
                 </C>
 
   rule [Val-Sequencing] :
       V:Value ; St:Stmt => St
 
-  /**
-   * Objects
-   */
-  // Scope Object Manipulation
-  rule [Gets-Got] :
-       <k> Gets((R:Ref, _), Str:String) => V ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map(Str |-> V:Value), _)) </ObjStore>
+/*@
+\section{Object Creation}
+*/
 
-  rule [Gets-Miss] :
-       <k> Gets((R:Ref, Rs:Refs), Str:String) => Gets(Rs, Str) ...</k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map, _)) </ObjStore>
-       when notBool(Str in keys(M))
-    
-  rule [Sets-Sot] :
-       <k> Sets((R:Ref, R2:Ref, Rs:Refs), Str:String, V:Value) => V ...</k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> (_ => V)), nofunobj)) </ObjStore>
-
-  rule [Sets-Miss] :
-       <k> Sets((R:Ref, R2:Ref, Rs:Refs => R2, Rs), Str:String, V:Value) ...</k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map, _)) </ObjStore>
-       when notBool(Str in keys(M))
-
-  rule [Sets-Glo] :
-       Sets((R:Ref, .Refs), Str:String, V:Value) => R[Str] = V 
-
-  // Object Construction
   rule [Object-Intro] :
        <k> ( { O:ValObjFields } => O ~> R ) ... </k>
-       <ObjStore> OS:Map(. => R |-> Obj(.Map, nofunobj)) </ObjStore>
+       <Store> OS:Map(. => R |-> Obj(.Map, nofunobj)) </Store>
        <R> R:Ref => R +Int 1 </R> 
 
   rule [Property-Intro] :
-       <k> ( Str:String : V:Value, O:ValObjFields ~> R  => O ~> R ) ... </k>
-       <ObjStore> OS:Map(R |-> Obj((M => M[V / Str]), _)) </ObjStore>
+       <k> ( Str:String : V:Value, O:ValObjFields => O) ~> R ... </k>
+       <Store> OS:Map(R |-> Obj((M => M[V / Str]), _)) </Store>
+
+  rule [Getter-Intro] :
+       <k> (get X:Id () { B:Block }, O:ValObjFields => O) ~> R ... </k>
+       <Store> OS:Map(R |-> Obj(M:Map (. => Id2String(X) |-> (FuncObj(Rs,.Ids,B) ** nofunobj)), _)) </Store>
+       <Scope> Rs:Refs </Scope>
+       when notBool(Id2String(X) in keys(M))
+
+  rule [Getter-Update] :
+       <k> (get X:Id () { B:Block }, O:ValObjFields => O) ~> R ... </k>
+       <Store> OS:Map(R |-> Obj(M:Map (XX |-> (_ => FuncObj(Rs, .Ids, B)) ** _), _)) </Store>
+       <Scope> Rs:Refs </Scope>
+       when XX ==String Id2String(X)
+
+  rule [Setter-Intro] :
+       <k> (set S:Id ( I:Id ) { B:Block }, O:ValObjFields => O) ~> R ... </k>
+       <Store> OS:Map(R |-> Obj(M:Map (. => Id2String(S) |-> 
+                                               (FuncObj(.Refs,.Ids,var .Ids; return undefined)
+                                                ** 
+                                                FuncObj(Rs,(I,.Ids),B))),_:MaybeFuncObj)) </Store>
+       <Scope> Rs </Scope>
+       when notBool(Id2String(S) in keys(M)) 
+
+  rule [Setter-Update] :
+       <k> (set S:Id ( Y:Id ) { B:Block }, O:ValObjFields => O) ~> R ... </k>
+       <Store> OS:Map(R |-> Obj(M:Map (SS |-> (_ ** (_ => FuncObj(Rs,(Y,.Ids), B)))), _)) </Store>
+       <Scope> Rs </Scope>
+       when SS ==String Id2String(S)
+
 
   rule [Reference-Object]:
        .ValObjFields ~> R => R
 
-  // Object Reference
+/*@
+\section{Object Reference}
+*/
+
   rule [E-GetField] :
        <k> ( R:Ref [ Str : String ] => V ) ... </k>
-       <ObjStore> OS:Map( R |-> Obj(O:Map(Str |-> V:Value), _)) </ObjStore>
+       <Store> OS:Map( R |-> Obj(O:Map(Str |-> V:Value), _)) </Store>
        
   rule [E-NoField] :
        <k> ( R:Ref [ Str : String ] => undefined) ... </k>
-       <ObjStore> OS:Map( R |-> Obj(O, _)) </ObjStore>
+       <Store> OS:Map( R |-> Obj(O, _)) </Store>
        when notBool(Str in keys(O))
 
   rule [E-SetField-Update] :
        <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> (V2:Value => V)),_)) </ObjStore>
+       <Store> OS:Map(R |-> Obj(M:Map (Str |-> (V2:Value => V)),_)) </Store>
 
   rule [E-SetField-Create] :
        <k> ( R:Ref [Str:String] = V:Value => V ) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (. => Str |-> V), _)) </ObjStore>
+       <Store> OS:Map(R |-> Obj(M:Map (. => Str |-> V), _)) </Store>
        when notBool(Str in keys(M))
-
-  /**
-   * Getters
-   */
-
-  rule [Getter-Update] :
-       <k> (get X:Id () { B:Block }, O:ValObjFields ~> R => O ~> R) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (Id2String(X) |-> ((_ => FuncObj(Rs, .Ids, B)) ** _)), _)) </ObjStore>
-       <Scope> Rs:Refs </Scope>
-
-  rule [Getter-Intro] :
-       <k> (get X:Id () { B:Block }, O:ValObjFields ~> R => O ~> R) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (. => Id2String(X) |-> (FuncObj(Rs,.Ids,B) ** nofunobj)), _)) </ObjStore>
-       <Scope> Rs:Refs </Scope>
-       when notBool(Id2String(X) in keys(M))
 
   rule [E-Getter] :
        <k> ( R:Ref [ Str : String ] => G(.Values)) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(O:Map(Str |-> G ** F), _)) </ObjStore>
+       <Store> OS:Map(R |-> Obj(O:Map(Str |-> G ** F), _)) </Store>
   
-  /**
-   * Setters
-   */
-
-  rule [Setter-Update] :
-       <k> (set X:Id ( Y:Id ) { B:Block }, O:ValObjFields => O) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (Id2String(S) |-> (_ ** (_ => FuncObj(Rs,(Y,.Ids), B)))), _)) </ObjStore>
-       <Scope> Rs </Scope>
-
-  rule [Setter-Intro] :
-       <k> (set S:Id ( I:Id ) { B:Block }, O:ValObjFields => O) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (. => Id2String(S) |-> FuncObj(.Refs,.Ids,var .Ids; return undefined)
-                                               ** FuncObj(Rs,(I,.Ids),B)), _)) </ObjStore>
-       <Scope> Rs </Scope>
-       when notBool(Id2String(S) in keys(M)) 
-                    
   rule [E-Setter] :
        <k> R:Ref [Str:String] = V:Value => 
            (FuncObj(.Refs,(String2Id("x"),.Ids), var .Ids ; return V)(F(V))) ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F), _)) </ObjStore>
+       <Store> OS:Map(R |-> Obj(M:Map (Str |-> F1 ** F), _)) </Store>
   
-  /**
-   * Functions
-   */
+/*@
+\section{Variables}
+*/
 
-  rule [Fun-Alloc] :
-       <k> function (Xs:Ids) {B:Block} => R ...</k>
-       <ObjStore> OS:Map(. => R |-> Obj(.Map, FuncObj(Rs,Xs,B))) </ObjStore>
-       <R> R:Ref => R +Int 1 </R>
-       <Scope> Rs:Refs </Scope>
-       
-  rule [Fun-Lookup] : 
-       <k>( (F:Ref => FuncObj(Env,Xs,B)) ( Vs:Values ))  ...</k>
-       <ObjStore> OS:Map(F |-> Obj(M:Map,FuncObj(Env:Refs,Xs:Ids,B:Block)))</ObjStore>
+  syntax K ::= "PopScope"
 
-  rule [Fun-Call-Some-Args] :
-       <k> FuncObj(Env:Refs,(X:Id, Xs:Ids),(var Ys:Ids; S:Stmt)) ( V:Value, Vs:Values ) => 
-           FuncObj(Env:Refs,Xs,(var X,Ys; X=V; S)) ( Vs ) ... </k>
-
-  rule [Fun-Call-No-Args] :
-       <k> (FuncObj(E:Refs,.Ids,B:Block) ( .Exprs )) => B ~> FEnd(Rs) ... </k>
-       <ObjStore> OS:Map(. => R |-> Obj(.Map, nofunobj)) </ObjStore>
-       <Scope> Rs:Refs => R, E </Scope>
-       <R> R:Ref => R +Int 1 </R>
-
-  rule [Fun-End] :
-       <k> ( return V:Value ~> FEnd( Rs ) => V ) ...</k>
-       <Scope> R:Refs => Rs </Scope>
-   
-  rule [Short-Circuit-Return] :
-       return V:Value ; S:Stmt => return V
-
-  rule [Fun-Done-No-Return] :
-       <k> (V:Value => return undefined) ~> FEnd( Rs ) ...</k>
-
-  /**
-   * Variables
-   */
   rule [Var-Declaration] :
        <k> var ( X:Id, Rest:Ids => Rest ) ; St:Stmt ... </k>
-       <ObjStore> OS:Map(R |-> Obj(M:Map => M[undefined / Id2String(X)], _)) </ObjStore>
+       <Store> OS:Map(R |-> Obj(M:Map => M[undefined / Id2String(X)], _)) </Store>
        <Scope> R:Ref, _ </Scope>
   
   rule [Empty-Var] :
@@ -239,9 +180,73 @@ module JS
        <k> V:Value ~> PopScope => V ... </k>
        <Scope> _, Rs:Refs => Rs </Scope>
 
-  /**
-   * Printing
-   */
+
+/*@
+\section{Scope Object Chain}
+*/
+  syntax K ::= Sets(Refs, String, Value)
+             | Gets(Refs, String)
+
+  rule [Gets-Got] :
+       <k> Gets((R:Ref, _), Str:String) => V ... </k>
+       <Store> OS:Map(R |-> Obj(M:Map(Str |-> V:Value), _)) </Store>
+
+  rule [Gets-Miss] :
+       <k> Gets((R:Ref, Rs:Refs), Str:String) => Gets(Rs, Str) ...</k>
+       <Store> OS:Map(R |-> Obj(M:Map, _)) </Store>
+       when notBool(Str in keys(M))
+    
+  rule [Sets-Sot] :
+       <k> Sets((R:Ref, R2:Ref, Rs:Refs), Str:String, V:Value) => V ...</k>
+       <Store> OS:Map(R |-> Obj(M:Map (Str |-> (_ => V)), nofunobj)) </Store>
+
+  rule [Sets-Miss] :
+       <k> Sets((R:Ref, R2:Ref, Rs:Refs => R2, Rs), Str:String, V:Value) ...</k>
+       <Store> OS:Map(R |-> Obj(M:Map, _)) </Store>
+       when notBool(Str in keys(M))
+
+  rule [Sets-Glo] :
+       Sets((R:Ref, .Refs), Str:String, V:Value) => R[Str] = V 
+
+/*@
+\section{Functions}
+*/
+
+  syntax K ::= FEnd(Refs) 
+
+  rule [Fun-Alloc] :
+       <k> function (Xs:Ids) {B:Block} => R ...</k>
+       <Store> OS:Map(. => R |-> Obj(.Map, FuncObj(Rs,Xs,B))) </Store>
+       <R> R:Ref => R +Int 1 </R>
+       <Scope> Rs:Refs </Scope>
+       
+  rule [Fun-Lookup] : 
+       <k>( (F:Ref => FuncObj(Env,Xs,B)) ( Vs:Values ))  ...</k>
+       <Store> OS:Map(F |-> Obj(M:Map,FuncObj(Env:Refs,Xs:Ids,B:Block)))</Store>
+
+  rule [Fun-Call-Some-Args] :
+       <k> FuncObj(Env:Refs,(X:Id, Xs:Ids),(var Ys:Ids; S:Stmt)) ( V:Value, Vs:Values ) => 
+           FuncObj(Env:Refs,Xs,(var X,Ys; X=V; S)) ( Vs ) ... </k>
+
+  rule [Fun-Call-No-Args] :
+       <k> (FuncObj(E:Refs,.Ids,B:Block) ( .Exprs )) => B ~> FEnd(Rs) ... </k>
+       <Store> OS:Map(. => R |-> Obj(.Map, nofunobj)) </Store>
+       <Scope> Rs:Refs => R, E </Scope>
+       <R> R:Ref => R +Int 1 </R>
+
+  rule [Fun-End] :
+       <k> ( return V:Value ~> FEnd( Rs ) => V ) ...</k>
+       <Scope> R:Refs => Rs </Scope>
+   
+  rule [Short-Circuit-Return] :
+       return V:Value ; S:Stmt => return V
+
+  rule [Fun-Done-No-Return] :
+       <k> (V:Value => return undefined) ~> FEnd( Rs ) ...</k>
+
+/*@
+\section{Printing}
+*/
 
   syntax K ::= Print(K, Int) | "Newline"
 
@@ -266,12 +271,12 @@ module JS
 
   rule [P-ObjEmpty] :
        <k> Print (R:Ref,N) => . ... </k>
-       <ObjStore> OS:Map(R |-> Obj(.Map, _)) </ObjStore>
+       <Store> OS:Map(R |-> Obj(.Map, _)) </Store>
        <out> ... (. => ListItem("{}")) </out>
 
   rule [P-ObjStart] :
        <k> Print (R:Ref,N) => Print(Val,N -Int 1) ~> Print(Obj(M,F), N -Int 1) ...</k>
-       <ObjStore> OS:Map(R |-> Obj((Id |-> Val)M:Map, F)) </ObjStore>
+       <Store> OS:Map(R |-> Obj((Id |-> Val)M:Map, F)) </Store>
        <out> ... (. => ListItem("{\"") ListItem(Id) ListItem("\":")) </out>
        when N =/=Int 0
 
